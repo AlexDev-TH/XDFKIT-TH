@@ -24,7 +24,7 @@ import (
 )
 
 // AppVersion is the desktop app's own version; the engine reports api.Version.
-var AppVersion = "0.1.0"
+var AppVersion = "0.2.0"
 
 // maxFile is the largest file the app reads: definitions and flash images
 // are far smaller, so anything bigger was picked by mistake.
