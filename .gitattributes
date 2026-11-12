@@ -1,0 +1,2 @@
+# Keep every file byte-for-byte as committed: fixtures and generated JSON are compared by bytes.
+* -text
