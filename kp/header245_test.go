@@ -24,11 +24,11 @@ func TestHeader245Parse(t *testing.T) {
 		t.Fatalf("FixedHeader %d", len(f.FixedHeader))
 	}
 	m0 := f.Project.Maps[0]
-	if m0.ID == "" || m0.X == nil || len(m0.X.MirrorPad) != 1 {
-		t.Fatalf("maps[0] id=%q pad=%v", m0.ID, m0.X)
+	if m0.ID == "" || m0.X == nil || m0.X.SkipBytes != 0 || len(m0.Term2) != 3 {
+		t.Fatalf("maps[0] id=%q x=%v", m0.ID, m0.X)
 	}
-	if n := len(f.Project.Folders[0].Pad); n != 14 {
-		t.Fatalf("folder pad %d", n)
+	if fd := f.Project.Folders[0]; fd.Name == "" || len(fd.States) != 1 {
+		t.Fatalf("folder %+v", fd)
 	}
 	if _, err := f.Encode(); err == nil {
 		t.Fatal("Encode of header 245 should fail")

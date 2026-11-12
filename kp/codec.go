@@ -27,7 +27,8 @@ import (
 //     v2         walk for headers 292, 329, 503, and 597 (and 245's project/zip)
 //     v2only     walk for headers 292 and 329 (and 245's project/zip) only
 //     ols5       walk for headers 503 and 597 only
-//     245        header 245's intern only (layout forced to V1 there); ORs with v1/v2/…
+//     245        header 245's map block only; ORs with v1/v2/…
+//     ge=N       header id N and later, as WinOLS itself decides (map and axis records)
 //     len=N      Hex: N raw bytes
 //     count      slice: int32 element count, then the elements
 //     bytes      slice: int32 byte length, then the elements
@@ -85,12 +86,16 @@ type field struct {
 	count      bool
 	bytes      bool
 	rest       bool
-	on245      bool // tag "245": header 245 map block
+	on245      bool  // tag "245": header 245 map block
+	ge         int32 // tag "ge=N": coded from header id N on
 }
 
 // include reports whether f is coded on c. Layout tags and "245" combine with OR.
 // A field with no layout or "245" tags is coded on every walk.
 func (f field) include(c *codec) bool {
+	if f.ge != 0 {
+		return c.headerID >= f.ge
+	}
 	if f.layouts == 0 && !f.on245 {
 		return true
 	}
@@ -138,14 +143,19 @@ func fieldsOf(t reflect.Type) []field {
 			case "hook":
 				f.hook = true
 			default:
-				if !strings.HasPrefix(o, "len=") {
+				ge := strings.HasPrefix(o, "ge=")
+				if !ge && !strings.HasPrefix(o, "len=") {
 					panic(fmt.Sprintf("kp: %s.%s: unknown tag option %q", t, sf.Name, o))
 				}
-				n, err := strconv.Atoi(o[4:])
+				n, err := strconv.Atoi(o[strings.IndexByte(o, '=')+1:])
 				if err != nil {
 					panic(fmt.Sprintf("kp: %s.%s: bad tag %q", t, sf.Name, o))
 				}
-				f.n = n
+				if ge {
+					f.ge = int32(n)
+				} else {
+					f.n = n
+				}
 			}
 		}
 		fs = append(fs, f)
@@ -174,28 +184,23 @@ func (c *codec) enter(name string) string {
 	return old
 }
 
+// named codes one value under name, for the offset lookup of hook-coded fields.
+func (c *codec) named(name string, code func()) {
+	old := c.enter(name)
+	code()
+	c.path = old
+}
+
 // record codes the struct p points to.
 func (c *codec) record(p any) { c.structFields(reflect.ValueOf(p).Elem()) }
+
+// array codes the array p points to, element by element.
+func (c *codec) array(p any) { c.elems(reflect.ValueOf(p).Elem()) }
 
 // list codes the slice p points to, with an element count.
 func (c *codec) list(p any) { c.value(reflect.ValueOf(p).Elem(), field{count: true}) }
 
 func (c *codec) structFields(v reflect.Value) {
-	// OLS5 Map/Axis bypass reflection: kp tags on those types are unused here;
-	// codeOLS5 is the layout source of truth (float Range, name padding, pads).
-	if c.layout == OLS5 {
-		switch s := v.Addr().Interface().(type) {
-		case *Map:
-			s.codeOLS5(c)
-			if ck, ok := v.Addr().Interface().(checker); ok {
-				ck.check(c)
-			}
-			return
-		case *Axis:
-			s.codeOLS5(c)
-			return
-		}
-	}
 	for _, f := range fieldsOf(v.Type()) {
 		if f.skip || !f.include(c) {
 			continue
@@ -431,20 +436,6 @@ func (c *codec) i32(p *int32) {
 	*p = int32(v)
 }
 
-// mirrorI32 codes Mirror as an int32 that must be 0 or 1 (v2 and OLS5).
-func (c *codec) mirrorI32(p *bool) {
-	var v int32
-	if *p {
-		v = 1
-	}
-	c.i32(&v)
-	if v != 0 && v != 1 {
-		c.pos -= 4
-		c.fail("mirror int32 %d", v)
-	}
-	*p = v == 1
-}
-
 // hexBytes codes a length-prefixed byte blob. When elemSize > 1, n must be a
 // multiple of elemSize (axis Values are 4 bytes per point).
 func (c *codec) hexBytes(p *Hex, elemSize int) {
@@ -500,9 +491,54 @@ func (c *codec) term(what string) {
 	}
 }
 
+// textNoNUL is the header id from which WinOLS stores strings without the
+// trailing NUL and codes "-", "?" and "%" as lengths -1, -2 and -3.
+const textNoNUL = 439
+
+// shortText are the one-character strings WinOLS stores as a negative length.
+var shortText = map[int32]string{-1: "-", -2: "?", -3: "%"}
+
 // str codes a length-prefixed ISO-8859-15 string; non-empty strings carry a trailing NUL.
-// Empty strings are length 0, or on OLS5 also length -1.
-func (c *codec) str(p *string) { c.strOpt(p, true) }
+// From header 439 it is the newer form (strNew). The header id is not known
+// yet while the signature is coded, which has the NUL in every pack.
+func (c *codec) str(p *string) {
+	if c.headerID >= textNoNUL {
+		c.strNew(p)
+		return
+	}
+	c.strOpt(p, true)
+}
+
+// strNew codes a string of header 439 and later: no trailing NUL,
+// and the strings "-", "?" and "%" as the lengths -1, -2 and -3.
+func (c *codec) strNew(p *string) {
+	if c.enc {
+		for n, s := range shortText {
+			if *p == s {
+				c.i32(&n)
+				return
+			}
+		}
+		b, err := toLatin9(*p)
+		if err != nil {
+			c.fail("%v", err)
+		}
+		c.count(len(b))
+		c.put(b...)
+		return
+	}
+	var n int32
+	c.i32(&n)
+	if s, ok := shortText[n]; ok {
+		*p = s
+		return
+	}
+	if n < 0 || int(n) > len(c.b)-c.pos {
+		c.pos -= 4
+		c.fail("bad string length %d", n)
+	}
+	*p = latin9(c.take(int(n)))
+}
 
 // strRaw is str without a trailing NUL (OLS5 value/axis strings, outer filename).
 func (c *codec) strRaw(p *string) { c.strOpt(p, false) }

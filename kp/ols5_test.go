@@ -1,6 +1,7 @@
 package kp
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -29,15 +30,13 @@ func TestOLS5Fixture597(t *testing.T) {
 	if f.Layout() != OLS5 || f.HeaderID != header597 {
 		t.Fatalf("layout %v header %d", f.Layout(), f.HeaderID)
 	}
-	if len(f.Project.NameTrailer) != 93 || len(f.Project.VersionTrailer) != 93 {
+	if len(f.Project.NameTrailer) != 94 || len(f.Project.VersionTrailer) != 94 {
 		t.Fatalf("597 trailers %d %d", len(f.Project.NameTrailer), len(f.Project.VersionTrailer))
 	}
 	if len(f.Project.Maps) != 4 {
 		t.Fatalf("maps %d", len(f.Project.Maps))
 	}
-	if _, err := f.Encode(); err == nil {
-		t.Fatal("Encode of OLS5 should fail")
-	}
+	encodeBack(t, f)
 }
 
 func TestOLS5Fixture503(t *testing.T) {
@@ -52,14 +51,36 @@ func TestOLS5Fixture503(t *testing.T) {
 	if f.Layout() != OLS5 || f.HeaderID != header503 {
 		t.Fatalf("layout %v header %d", f.Layout(), f.HeaderID)
 	}
-	if len(f.Project.NameTrailer) != 84 || len(f.Project.VersionTrailer) != 84 {
+	if len(f.Project.NameTrailer) != 85 || len(f.Project.VersionTrailer) != 85 {
 		t.Fatalf("503 trailers %d %d", len(f.Project.NameTrailer), len(f.Project.VersionTrailer))
 	}
 	if len(f.Project.Maps) != 4 {
 		t.Fatalf("maps %d", len(f.Project.Maps))
 	}
-	if _, err := f.Encode(); err == nil {
-		t.Fatal("Encode of header 503 should fail")
+	encodeBack(t, f)
+}
+
+// encodeBack encodes f and checks that the result parses to the same map block
+// and folders, with the end marker where EndOffset says.
+func encodeBack(t *testing.T, f *File) {
+	t.Helper()
+	out, err := f.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := Parse(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(g.Project.intern, f.Project.intern) {
+		t.Fatal("map block differs after encode")
+	}
+	if len(g.Project.Folders) != len(f.Project.Folders) || int(g.HeaderLen) != len(out) {
+		t.Fatalf("folders %d, header length %d of %d", len(g.Project.Folders), g.HeaderLen, len(out))
+	}
+	end := int(g.EndOffset)
+	if end < 0 || end+4+int(g.DataSize) != len(out) || !bytes.Equal(out[end:end+4], endMarker) {
+		t.Fatalf("end marker not at %#x (data size %d, length %#x)", end, g.DataSize, len(out))
 	}
 }
 
@@ -75,7 +96,7 @@ func TestOLS5Parse(t *testing.T) {
 	if f.Layout() != OLS5 || f.HeaderID != header597 {
 		t.Fatalf("layout %v header %d, want OLS5 597", f.Layout(), f.HeaderID)
 	}
-	if len(f.Project.NameTrailer) != 93 || len(f.Project.VersionTrailer) != 93 {
+	if len(f.Project.NameTrailer) != 94 || len(f.Project.VersionTrailer) != 94 {
 		t.Fatalf("597 trailers %d %d", len(f.Project.NameTrailer), len(f.Project.VersionTrailer))
 	}
 	if n := len(f.Project.Maps); n < 6000 {
@@ -84,9 +105,7 @@ func TestOLS5Parse(t *testing.T) {
 	if n := len(f.Project.Folders); n < 100 {
 		t.Fatalf("folders %d", n)
 	}
-	if _, err := f.Encode(); err == nil {
-		t.Fatal("Encode of OLS5 should fail")
-	}
+	encodeBack(t, f)
 }
 
 // Header 503 is the other OLS5 header beside 597 (full local pack).
@@ -102,7 +121,7 @@ func TestOLS5Header503(t *testing.T) {
 	if f.Layout() != OLS5 || f.HeaderID != header503 {
 		t.Fatalf("layout %v header %d", f.Layout(), f.HeaderID)
 	}
-	if len(f.Project.NameTrailer) != 84 || len(f.Project.VersionTrailer) != 84 {
+	if len(f.Project.NameTrailer) != 85 || len(f.Project.VersionTrailer) != 85 {
 		t.Fatalf("503 trailers %d %d", len(f.Project.NameTrailer), len(f.Project.VersionTrailer))
 	}
 	if n := len(f.Project.Maps); n != 4053 {
@@ -140,9 +159,7 @@ func TestOLS5Header503(t *testing.T) {
 			t.Errorf("folder %d %q", i, f.Project.Folders[i].Name)
 		}
 	}
-	if _, err := f.Encode(); err == nil {
-		t.Fatal("Encode of header 503 should fail")
-	}
+	encodeBack(t, f)
 }
 
 // TestOLS5JSONIntersection treats BB-0003.json as a secondary oracle: it came

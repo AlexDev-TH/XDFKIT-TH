@@ -1,7 +1,6 @@
 package kp
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 )
@@ -58,17 +57,11 @@ func shrinkZipKP(src []byte, f *File, maxMaps int) ([]byte, error) {
 	return spliceZip(src, f, z)
 }
 
-// mapSpans returns each map's [start,end) in intern, the InternFlag, and bytes
-// after the last map (OLS5 stub; empty on 245).
+// mapSpans returns each map's [start,end) in intern, the InternFlag, and any
+// bytes after the last map.
 func mapSpans(intern []byte, headerID int32) (spans [][2]int, flag byte, stub []byte, err error) {
 	defer catch(&err)
-	layout := V2
-	switch headerID {
-	case header245:
-		layout = V1
-	case header503, header597:
-		layout = OLS5
-	}
+	layout, _ := headerGroup(headerID)
 	c := &codec{b: intern, layout: layout, headerID: headerID, block: true}
 	c.u8(&flag)
 	n := c.count(0)
@@ -84,7 +77,7 @@ func mapSpans(intern []byte, headerID int32) (spans [][2]int, flag byte, stub []
 }
 
 // spliceZip replaces the zip at f.Project.zipOff, appends MapsTag/folders and
-// the end marker, and patches EndOffset in the kept prefix.
+// the end marker, and sets EndOffset and DataSize in the kept prefix.
 func spliceZip(src []byte, f *File, z []byte) ([]byte, error) {
 	off := f.Project.zipOff
 	if off < 4 || off+4 > len(src) {
@@ -99,21 +92,20 @@ func spliceZip(src []byte, f *File, z []byte) ([]byte, error) {
 		tc.i32(&f.Project.MapsTag[i])
 	}
 	tc.list(&f.Project.Folders)
-	endMark := []byte{0x33, 0x88, 0x72, 0x98}
 	out := append([]byte(nil), src[:off]...)
 	var nbuf [4]byte
 	binary.LittleEndian.PutUint32(nbuf[:], uint32(len(z)))
 	out = append(out, nbuf[:]...)
 	out = append(out, z...)
 	out = append(out, tc.b...)
-	out = append(out, endMark...)
+	out = append(out, endMarker...)
 
-	oldMark := make([]byte, 4)
-	binary.LittleEndian.PutUint32(oldMark, uint32(f.EndOffset))
-	idx := bytes.Index(out[:off], oldMark)
-	if idx < 0 {
-		return nil, fmt.Errorf("kp: EndOffset field not found in prefix")
+	// The end marker is now the last four bytes and no image data follows it.
+	locs, err := f.Offsets("endOffset", "dataSize")
+	if err != nil {
+		return nil, err
 	}
-	binary.LittleEndian.PutUint32(out[idx:], uint32(len(out)-4))
+	binary.LittleEndian.PutUint32(out[locs["endOffset"].Off:], uint32(len(out)-4))
+	binary.LittleEndian.PutUint32(out[locs["dataSize"].Off:], 0)
 	return out, nil
 }

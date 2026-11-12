@@ -21,25 +21,25 @@
   },
   "500": {
     "folder": {
-      "flags": "0000",
-      "pad": "00000000000001000000000000000000000000000000000000000000ffffffff00000000",
-      "style": null
+      "parent": -1
     },
     "map": {
-      "term2": "0101"
+      "idPre": [
+        0,
+        16
+      ],
+      "windowRef": -1
     },
     "slot": {
-      "precision": -1,
-      "value": {
-        "description": "",
-        "units": ""
-      }
+      "base": 10,
+      "mirror": null,
+      "precision": -1
     }
   },
   "default": {
     "folder": {
-      "flags": "0101",
-      "style": "0x1000000"
+      "flag": 1,
+      "states": "01"
     },
     "map": {
       "addr2ImageSize": "0x100000",
