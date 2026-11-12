@@ -80,7 +80,7 @@ type Object struct {
 	Comment     string      `json:"comment,omitempty" doc:"Free-text comment."`
 	Categories  []int       `json:"categories,omitempty" doc:"Category ids."`
 	Shape       string      `json:"shape" doc:"value: one cell; 1d: a row of cols cells; 2d: rows by cols cells." enum:"value|1d|2d"`
-	Inverse     bool        `json:"inverse,omitzero" doc:"KP \"2d Inverse\" organisation; its meaning is unconfirmed (docs/kp-format.md)."`
+	Inverse     bool        `json:"inverse,omitzero" doc:"KP \"2d Inverse\" organisation: rows and cols are in stored order, and the map window shows the stored lines as its columns."`
 	VisLevel    int         `json:"vislevel,omitzero" doc:"TunerPro XDF vislevel (Show Up To / Show Only). 1 matches the WinOLS map-list marker (KP Marked); 0 is unmarked and written as XDF level 2."`
 	Address     Addr        `json:"address" doc:"File offset of the first cell."`
 	Rows        int         `json:"rows" doc:"Number of rows."`

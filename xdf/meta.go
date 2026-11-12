@@ -188,6 +188,10 @@ func merge(v *model.Model, uids []string, folds map[string]string, mf *metaFile)
 // what the XDF holds. The caller sets the categories.
 func reconcile(v, c *model.Object) *model.Object {
 	o := *v
+	if c.Inverse {
+		// The XDF holds a 2d-inverse map as the column-major table it shows.
+		o = *v.AsInverse()
+	}
 	o.Key, o.Inverse, o.View = c.Key, c.Inverse, c.View
 	// VisLevel: XDF expresses it. Keep the metadata's when the writer would
 	// emit the XDF's attribute from it (unmarked 0 writes as 2), else the XDF's.

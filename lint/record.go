@@ -162,9 +162,10 @@ func sameCounts(a, b []int) bool {
 }
 
 // imageAxis reports whether a is an axis of n integer points read from the
-// image.
+// image, one after the other. An axis with skip bytes between its points is
+// left alone: the rules read packed points.
 func imageAxis(a *kp.Axis, n int) bool {
-	return a != nil && a.Defined && a.DataSource.FromImage() && n >= 2 && a.Type.Width() > 0 && !a.Type.Float()
+	return a != nil && a.Defined && a.DataSource.FromImage() && n >= 2 && a.Type.Width() > 0 && !a.Type.Float() && a.SkipBytes == 0
 }
 
 // mapCounts are a map's point counts, one per axis.

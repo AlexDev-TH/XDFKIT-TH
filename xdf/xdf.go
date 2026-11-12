@@ -194,7 +194,31 @@ func WriteLabels(m *model.Model, image []byte, title string) ([]byte, error) {
 	return write(m, image, title, true)
 }
 
+// asShown is m with each 2d-inverse object as the column-major table its map
+// window shows (model.Object.AsColumnMajor): an XDF table is laid out as it
+// is displayed.
+func asShown(m *model.Model) *model.Model {
+	var c *model.Model
+	for i, o := range m.Objects {
+		s := o.AsColumnMajor()
+		if s == o {
+			continue
+		}
+		if c == nil {
+			cp := *m
+			cp.Objects = slices.Clone(m.Objects)
+			c = &cp
+		}
+		c.Objects[i] = s
+	}
+	if c == nil {
+		return m
+	}
+	return c
+}
+
 func write(m *model.Model, image []byte, title string, labels bool) ([]byte, error) {
+	m = asShown(m)
 	desc := trim(m.Project.Name)
 	if p := m.Provenance; p != nil && p.Subset != nil {
 		desc = strings.TrimPrefix(desc+"\n"+subsetPrefix+" "+p.Subset.Kind+" sha256:"+p.Subset.Table, "\n")

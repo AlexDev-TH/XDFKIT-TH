@@ -432,6 +432,9 @@ func objectFromKP(km *kp.Map, inFolder bool) *Object {
 		X:           axisFromKP(km.X, axisCount(km, true)),
 		Y:           axisFromKP(km.Y, axisCount(km, false)),
 	}
+	if km.SkipBytes != 0 || km.LineSkipBytes != 0 {
+		o.Data.SetSkips(int(km.Width), int(km.SkipBytes), int(km.LineSkipBytes), int(km.Rows))
+	}
 	if km.Marked != 0 {
 		o.VisLevel = 1
 	}
@@ -477,40 +480,57 @@ func (o *Object) modelAxisCount(x bool) int {
 	return r
 }
 
+// kpLayout is how a KP states o's cells: the elements per stored line, the
+// stored lines, whether the map window shows them the other way round (2d
+// inverse), and the skip bytes. A column-major table is a 2d-inverse map: its
+// stored lines are the columns. ok is false when WinOLS has no such layout;
+// the cells are then written packed.
+func (o *Object) kpLayout() (cols, rows int, inverse bool, skip, lineSkip int, ok bool) {
+	s := o.AsInverse()
+	skip, lineSkip, ok = s.Data.rowForm(s.Rows).Skips(s.Rows, s.Cols)
+	if !ok {
+		return o.Cols, o.Rows, o.Inverse, 0, 0, false
+	}
+	return s.Cols, s.Rows, s.Inverse, skip, lineSkip, true
+}
+
 func (o *Object) kpMap(i int) *kp.Map {
 	org := map[string]kp.Org{"value": kp.OrgSingle, "1d": kp.OrgOneD, "2d": kp.OrgTwoD}[o.Shape]
-	if o.Inverse {
+	cols, rows, inverse, skip, lineSkip, _ := o.kpLayout()
+	if inverse {
 		org = kp.OrgTwoDInv
 	}
 	t := kpType(o.Data)
 	km := &kp.Map{
-		Index:        i,
-		Key:          o.Key,
-		Comment:      o.Comment,
-		Name:         o.Description,
-		Organization: org,
-		Type:         t,
-		Width:        int32(t.Width()),
-		Base:         kpBase(o.View.Base),
-		ID:           o.ID,
-		Reciprocal:   o.Value.Conversion.Reciprocal,
-		Signed:       o.Data.Signed,
-		Difference:   o.View.Difference,
-		Percent:      o.View.Percent,
-		Cols:         int32(o.Cols),
-		Rows:         int32(o.Rows),
-		Precision:    int32(o.Value.Precision),
-		Value:        kpValue(o.Value),
-		Start:        uint32(o.Address),
-		End:          uint32(o.Address) + uint32(o.Rows*o.Cols*t.Width()),
-		Addr2:        uint32(o.Address),
-		X:            o.X.kpAxis(o.modelAxisCount(true)),
-		Y:            o.Y.kpAxis(o.modelAxisCount(false)),
-		StoredCols:   int32(o.Cols),
-		StoredRows:   int32(o.Rows),
-		Term2:        kp.Hex{1, 1, 1},
+		Index:         i,
+		Key:           o.Key,
+		Comment:       o.Comment,
+		Name:          o.Description,
+		Organization:  org,
+		Type:          t,
+		Width:         int32(t.Width()),
+		Base:          kpBase(o.View.Base),
+		ID:            o.ID,
+		Reciprocal:    o.Value.Conversion.Reciprocal,
+		Signed:        o.Data.Signed,
+		Difference:    o.View.Difference,
+		Percent:       o.View.Percent,
+		Cols:          int32(cols),
+		Rows:          int32(rows),
+		Precision:     int32(o.Value.Precision),
+		Value:         kpValue(o.Value),
+		Start:         uint32(o.Address),
+		End:           uint32(o.Address) + uint32(rows*cols*(t.Width()+skip)+rows*lineSkip),
+		Addr2:         uint32(o.Address),
+		X:             o.X.kpAxis(o.modelAxisCount(true)),
+		Y:             o.Y.kpAxis(o.modelAxisCount(false)),
+		StoredCols:    int32(cols),
+		StoredRows:    int32(rows),
+		Term2:         kp.Hex{1, 1, 1},
+		SkipBytes:     int32(skip),
+		LineSkipBytes: int32(lineSkip),
 	}
-	if o.Inverse {
+	if inverse {
 		km.StoredCols, km.StoredRows = km.StoredRows, km.StoredCols
 	}
 	if len(o.Categories) > 0 {
@@ -520,6 +540,36 @@ func (o *Object) kpMap(i int) *kp.Map {
 		km.Marked = 1
 	}
 	return km
+}
+
+// KPDefaultHeader is the header id of the pack KP writes without a template.
+const KPDefaultHeader = 292
+
+// KPLayoutLost counts the objects whose cells or axis points a KP of the given
+// header id cannot place where the model has them. noForm have a layout
+// WinOLS has no form for; tooOld have skip bytes that only a later header
+// holds, so a template from a later WinOLS keeps them. Such cells are written
+// packed.
+func (m *Model) KPLayoutLost(header int32) (noForm, tooOld int) {
+	for _, o := range m.Objects {
+		_, _, _, skip, lineSkip, ok := o.kpLayout()
+		old := skip != 0 && header < kp.HeaderMapSkip || lineSkip != 0 && header < kp.HeaderLineSkip
+		for _, x := range []*Axis{o.X, o.Y} {
+			if x == nil || x.Source != "image" || x.Data == nil {
+				continue
+			}
+			skip, _, axisOK := x.Data.Skips(1, 2)
+			ok = ok && axisOK
+			old = old || skip != 0 && header < kp.HeaderAxisSkip
+		}
+		switch {
+		case !ok:
+			noForm++
+		case old:
+			tooOld++
+		}
+	}
+	return noForm, tooOld
 }
 
 func dataFromKP(t kp.Type, signed bool) Data {
@@ -700,6 +750,9 @@ func axisFromKP(a *kp.Axis, n int) *Axis {
 	switch x.Source {
 	case "image":
 		addr := Addr(a.Addr)
+		if a.SkipBytes != 0 {
+			d.SetSkips(int(a.Width), int(a.SkipBytes), 0, 1)
+		}
 		x.Address, x.Data = &addr, &d
 	case "editable":
 		x.Data = &d
@@ -738,6 +791,9 @@ func (x *Axis) kpAxis(n int) *kp.Axis {
 	}
 	if x.Data != nil {
 		a.Type, a.Signed = kpType(*x.Data), x.Data.Signed
+		if skip, _, ok := x.Data.Skips(1, 2); ok && x.Source == "image" {
+			a.SkipBytes = int32(skip)
+		}
 	} else {
 		// No storage. Type 0 has no width. An 8-bit ordinal is the unused-slot width.
 		a.Type = 1

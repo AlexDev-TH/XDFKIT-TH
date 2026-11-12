@@ -9,6 +9,7 @@ import (
 
 	"go.nyet.org/xdfkit/api"
 	"go.nyet.org/xdfkit/canon"
+	"go.nyet.org/xdfkit/kp"
 	"go.nyet.org/xdfkit/model"
 )
 
@@ -142,12 +143,111 @@ func TestSpacedThroughXDF(t *testing.T) {
 	if csv := string(read(t, c.Output)); !strings.Contains(csv, `"10.0","40.0","0xa","0x28"`) {
 		t.Errorf("CSV value range of the paired values:\n%s", csv)
 	}
-	// A KP holds packed cells only: the conversion says so.
+	// A KP states the gaps by skip bytes. The pack the engine writes by itself
+	// (header 292) has them for axis points, not for the cells of a map, and
+	// the conversion says so. A column-major table is a 2d-inverse map.
 	k := a.Convert(ConvertJob{Input: src, To: api.KP})
 	if k.Error != "" {
 		t.Fatal(k.Error)
 	}
-	if !slices.Contains(k.Warnings, "[[kp-layout]] 2") {
-		t.Errorf("KP warnings %v, want the two spaced tables reported", k.Warnings)
+	if !slices.Contains(k.Warnings, "[[kp-header]] 1") || slices.ContainsFunc(k.Warnings, func(w string) bool { return strings.HasPrefix(w, "[[kp-layout]]") }) {
+		t.Errorf("KP warnings %v, want the paired values alone reported as needing a later pack", k.Warnings)
+	}
+	f, err := kp.Parse(read(t, k.Output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pairs, cols := f.Project.Maps[0], f.Project.Maps[1]
+	if pairs.X.SkipBytes != 1 || pairs.SkipBytes != 0 {
+		t.Errorf("paired curve in a header %d pack: axis skip %d, map skip %d", f.HeaderID, pairs.X.SkipBytes, pairs.SkipBytes)
+	}
+	if cols.Organization != kp.OrgTwoDInv || cols.Cols != 2 || cols.Rows != 3 || cols.StoredCols != 3 || cols.StoredRows != 2 {
+		t.Errorf("column-major table in the KP: %v, %d elements in %d lines, shown %d by %d", cols.Organization, cols.Cols, cols.Rows, cols.StoredCols, cols.StoredRows)
+	}
+	// Read back from the KP, the 2d-inverse map shows the cells it had.
+	if v, err := a.MapDetail(k.Output, 1, bin); err != nil {
+		t.Fatal(err)
+	} else if got := cellRows(v); len(got) != 2 || !slices.Equal(got[0], []float64{1, 3, 5}) || !slices.Equal(got[1], []float64{2, 4, 6}) {
+		t.Errorf("2d-inverse cells from the KP %v, want [1 3 5] [2 4 6]", got)
+	}
+	if v, err := a.MapDetail(k.Output, 0, bin); err != nil {
+		t.Fatal(err)
+	} else if got := axisValues(v.X); !slices.Equal(got, []float64{1, 2, 3, 4}) {
+		t.Errorf("paired axis from the KP %v, want 1 2 3 4", got)
+	}
+}
+
+// TestSkipBytesInLaterPack: with a pack of a later WinOLS as the template, the
+// KP holds the skip bytes of map cells too, and they read back as the strides
+// they came from.
+func TestSkipBytesInLaterPack(t *testing.T) {
+	a := NewApp()
+	dir := t.TempDir()
+	m, img := spacedModel()
+	// A table whose rows each end in two bytes that are not cells.
+	copy(img[0x20:], []byte{1, 2, 3, 0xEE, 0xEE, 4, 5, 6, 0xEE, 0xEE})
+	m.Objects = append(m.Objects, &model.Object{
+		ID: "Rows", Shape: "2d", Address: 0x20, Rows: 2, Cols: 3,
+		Data:  model.Data{Bits: 8, MinorStride: 24},
+		Value: model.Value{Conversion: model.Conversion{Factor: 1}},
+	})
+	doc, err := canon.MarshalStamped(m, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, bin := filepath.Join(dir, "spaced.json"), filepath.Join(dir, "spaced.bin")
+	if err := os.WriteFile(src, doc, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, img, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	k := a.Convert(ConvertJob{Input: src, To: api.KP, Template: filepath.Join("..", "testdata", "kp", "503-fewmaps.kp")})
+	if k.Error != "" {
+		t.Fatal(k.Error)
+	}
+	for _, w := range k.Warnings {
+		if strings.HasPrefix(w, "[[kp-header]]") || strings.HasPrefix(w, "[[kp-layout]]") {
+			t.Errorf("warning %q with a header 503 template", w)
+		}
+	}
+	f, err := kp.Parse(read(t, k.Output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.HeaderID != 503 || len(f.Project.Maps) != 3 {
+		t.Fatalf("header %d, %d maps", f.HeaderID, len(f.Project.Maps))
+	}
+	if p := f.Project.Maps[0]; p.SkipBytes != 1 || p.X.SkipBytes != 1 || p.End != 0x11+8 {
+		t.Errorf("paired curve: map skip %d, axis skip %d, end %#x", p.SkipBytes, p.X.SkipBytes, p.End)
+	}
+	if r := f.Project.Maps[2]; r.SkipBytes != 0 || r.LineSkipBytes != 2 || r.End != 0x20+10 {
+		t.Errorf("padded rows: skip %d, line skip %d, end %#x", r.SkipBytes, r.LineSkipBytes, r.End)
+	}
+	d, err := a.loadDef(k.Output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.model.Objects[0].Data; got.MajorStride != 16 {
+		t.Errorf("paired values read back as %+v", got)
+	}
+	if got := d.model.Objects[2].Data; got.MinorStride != 24 || got.MajorStride != 0 {
+		t.Errorf("padded rows read back as %+v", got)
+	}
+	for i, want := range [][][]float64{{{10, 20, 30, 40}}, {{1, 3, 5}, {2, 4, 6}}, {{1, 2, 3}, {4, 5, 6}}} {
+		v, err := a.MapDetail(k.Output, i, bin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := cellRows(v)
+		if len(got) != len(want) {
+			t.Errorf("object %d: %v, want %v", i, got, want)
+			continue
+		}
+		for r := range want {
+			if !slices.Equal(got[r], want[r]) {
+				t.Errorf("object %d row %d: %v, want %v", i, r, got[r], want[r])
+			}
+		}
 	}
 }

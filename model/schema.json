@@ -235,7 +235,7 @@
           "type": "string"
         },
         "inverse": {
-          "description": "KP \"2d Inverse\" organisation; its meaning is unconfirmed (docs/kp-format.md).",
+          "description": "KP \"2d Inverse\" organisation: rows and cols are in stored order, and the map window shows the stored lines as its columns.",
           "type": "boolean"
         },
         "key": {

@@ -65,6 +65,7 @@ func (a *App) OpenDefinition(path string) (Definition, error) {
 	}
 	def.Rows = make([]MapRow, len(m.Objects))
 	for i, o := range m.Objects {
+		o = o.AsColumnMajor() // rows and columns as the map is shown
 		cats := make([]string, 0, len(o.Categories))
 		for _, id := range o.Categories {
 			counts[id]++
@@ -187,10 +188,13 @@ func (a *App) MapDetail(path string, index int, image string) (MapView, error) {
 }
 
 func viewObject(m *model.Model, index int, img []byte) MapView {
-	o := m.Objects[index]
+	stored := m.Objects[index]
+	// A 2d-inverse KP map is shown as WinOLS shows it: its stored lines are
+	// the columns.
+	o := stored.AsColumnMajor()
 	v := MapView{
 		Index: index, ID: o.ID, Key: o.Key, Description: o.Description, Comment: o.Comment,
-		Categories: []string{}, Shape: o.Shape, Inverse: o.Inverse, Rows: o.Rows, Cols: o.Cols,
+		Categories: []string{}, Shape: o.Shape, Inverse: stored.Inverse, Rows: o.Rows, Cols: o.Cols,
 		Address:    fmt.Sprintf("0x%X", uint32(o.Address)),
 		EndAddress: fmt.Sprintf("0x%X", uint64(o.Address)+uint64(o.Data.Extent(o.Rows, o.Cols))),
 		Bits:       o.Data.Bits, Signed: o.Data.Signed, Float: o.Data.Float, Endian: endianOf(o.Data),
@@ -206,7 +210,7 @@ func viewObject(m *model.Model, index int, img []byte) MapView {
 			}
 		}
 	}
-	if b, err := json.MarshalIndent(o, "", "  "); err == nil {
+	if b, err := json.MarshalIndent(stored, "", "  "); err == nil {
 		v.JSON = string(b)
 	}
 	if o.Shape != "value" {

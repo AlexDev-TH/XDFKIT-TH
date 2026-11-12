@@ -227,6 +227,9 @@ func compareXDF(m *model.Model, xdfBytes []byte) (diffs []string, checked int) {
 		}
 	}
 	for i, o := range m.Objects {
+		// An XDF table is laid out as it is shown: a 2d-inverse KP map is the
+		// column-major table with its rows and columns swapped.
+		o = o.AsColumnMajor()
 		it := items[uint64(i+1)]
 		if it == nil {
 			diff(o, "no table with uniqueid %#x in the XDF", i+1)

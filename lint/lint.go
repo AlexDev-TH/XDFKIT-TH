@@ -306,8 +306,19 @@ func subtracted(v []int64, w int) []int64 {
 	return s
 }
 
-// mapBytes is the byte length of a map's data, or 0 if unknown.
-func mapBytes(m *kp.Map) int { return int(m.Cols) * int(m.Rows) * m.Type.Width() }
+// mapBytes is the byte length of a map's data, or 0 if unknown. Skip bytes
+// count, as in the end address WinOLS writes.
+func mapBytes(m *kp.Map) int {
+	w := m.Type.Width()
+	if w == 0 {
+		return 0
+	}
+	return int(m.Cols)*int(m.Rows)*(w+int(m.SkipBytes)) + int(m.Rows)*int(m.LineSkipBytes)
+}
+
+// spaced reports a map whose cells have skip bytes between them; the record
+// rules read packed cells.
+func spaced(m *kp.Map) bool { return m.SkipBytes != 0 || m.LineSkipBytes != 0 }
 
 // checkEnd applies rule MP01: WinOLS writes a map's end address as start +
 // byte length and recomputes it on export, so a different value is stale.
@@ -333,7 +344,7 @@ const alignCells = 16
 // mislocated. Report only; the readings one byte either side are evidence.
 func checkAlign(m *kp.Map, img []byte, family string) *Finding {
 	n, w := int(m.Cols)*int(m.Rows), m.Type.Width()
-	if family != ME7 || w < 2 || m.Type.Float() || m.Start%2 == 0 || n <= 0 {
+	if family != ME7 || w < 2 || m.Type.Float() || m.Start%2 == 0 || n <= 0 || spaced(m) {
 		return nil
 	}
 	k := min(n, alignCells)
@@ -360,7 +371,7 @@ func checkAlign(m *kp.Map, img []byte, family string) *Finding {
 // record with its own point counts points at the record start. Report only.
 func checkHeader(m *kp.Map, img []byte, family string) *Finding {
 	n, w := int(m.Cols), m.Type.Width()
-	if family != ME7 || n < 2 || w == 0 || m.Type.Float() || imageAxis(m.X, n) || imageAxis(m.Y, int(m.Rows)) {
+	if family != ME7 || n < 2 || w == 0 || m.Type.Float() || imageAxis(m.X, n) || imageAxis(m.Y, int(m.Rows)) || spaced(m) {
 		return nil
 	}
 	counts := mapCounts(m)

@@ -24,7 +24,7 @@ import (
 )
 
 // AppVersion is the desktop app's own version; the engine reports api.Version.
-var AppVersion = "0.2.0"
+var AppVersion = "0.3.0"
 
 // maxFile is the largest file the app reads: definitions and flash images
 // are far smaller, so anything bigger was picked by mistake.
@@ -948,9 +948,22 @@ func convertViaModel(data []byte, req api.ConvertRequest, from string, tunerPro 
 		return nil, nil, warnings, err
 	}
 	if req.To == api.KP {
-		// A KP, as far as its format is known, holds packed cells only.
-		if n := spacedObjects(m); n > 0 {
-			warnings = append(warnings, fmt.Sprintf("[[kp-layout]] %d", n))
+		// A KP states gaps between cells by skip bytes, and only a pack of a
+		// later WinOLS has them for the cells of a map: the pack takes its
+		// format from the template.
+		header := int32(model.KPDefaultHeader)
+		if f, err := kp.Parse(req.Template); len(req.Template) > 0 && err == nil {
+			header = f.HeaderID
+			if f.DataSize > 0 {
+				warnings = append(warnings, fmt.Sprintf("[[kp-data]] %d", f.DataSize))
+			}
+		}
+		noForm, tooOld := m.KPLayoutLost(header)
+		if noForm > 0 {
+			warnings = append(warnings, fmt.Sprintf("[[kp-layout]] %d", noForm))
+		}
+		if tooOld > 0 {
+			warnings = append(warnings, fmt.Sprintf("[[kp-header]] %d", tooOld))
 		}
 	}
 	switch {
@@ -1019,20 +1032,4 @@ func mergeThai(docs [2][]byte, req api.MergeRequest) (out, meta []byte, resp api
 	out, cr, err := api.Convert(doc, api.ConvertRequest{To: to, Name: req.Name, Image: req.Image, Title: req.Title, StaticAxes: req.StaticAxes})
 	resp.Warnings = append(resp.Warnings, cr.Warnings...)
 	return out, cr.Meta, resp, err
-}
-
-// spacedObjects counts the objects whose cells or axis points are not packed
-// (model.Data.Spaced), which a KP cannot say.
-func spacedObjects(m *model.Model) int {
-	n := 0
-	for _, o := range m.Objects {
-		spaced := o.Data.Spaced()
-		for _, x := range []*model.Axis{o.X, o.Y} {
-			spaced = spaced || x != nil && x.Data != nil && x.Source == "image" && x.Data.Spaced()
-		}
-		if spaced {
-			n++
-		}
-	}
-	return n
 }

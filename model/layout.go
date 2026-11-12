@@ -63,6 +63,121 @@ func (d Data) Extent(rows, cols int) int {
 	return far + (d.Bits+7)/8
 }
 
+// WinOLS states a layout by two counts of bytes instead, the script's
+// SkipBytes and LineSkipBytes. Its cell address routine, read from a WinOLS 5
+// build, puts element i of stored line l, with n elements to a line, at
+//
+//	(width+skip)*(n*l+i) + lineSkip*l
+//
+// from the map's start, and axis point i at (width+skip)*i. So skip is the
+// major stride less the cell, and lineSkip what the gap after a row adds to it.
+
+// SetSkips sets the strides of cells that WinOLS spaces by skip bytes after
+// each cell and lineSkip bytes after each of lines stored lines. width is the
+// cell size in bytes as the record states it. It reports false, leaving the
+// rows packed, when the lines would overlap.
+func (d *Data) SetSkips(width, skip, lineSkip, lines int) bool {
+	d.MajorStride, d.MinorStride = 0, 0
+	if width <= 0 {
+		width = d.Bits / 8
+	}
+	pitch := 8 * (width + skip)
+	if pitch != d.Bits {
+		d.MajorStride = pitch
+	}
+	if lines <= 1 {
+		return pitch >= d.Bits
+	}
+	gap := pitch + 8*lineSkip - d.Bits
+	if gap > 0 {
+		d.MinorStride = gap + d.Bits
+	}
+	return gap >= 0 && pitch >= d.Bits
+}
+
+// Skips states d's strides the way WinOLS does, for a table of lines stored
+// lines with per cells each. ok is false when WinOLS has no such layout: cells
+// narrower than a byte or closer than their width, cells or rows in reverse,
+// column-major order, or a row gap smaller than the gap between cells.
+// Lines of one cell have no gap between cells: what follows each line is
+// stated as the skip after each cell.
+func (d Data) Skips(lines, per int) (skip, lineSkip int, ok bool) {
+	step := d.MajorStride
+	if step == 0 || per <= 1 {
+		step = d.Bits
+	}
+	if d.Bits <= 0 || d.Bits%8 != 0 || step%8 != 0 || step < d.Bits || d.MinorStride < 0 || d.ColumnMajor {
+		return 0, 0, false
+	}
+	skip = (step - d.Bits) / 8
+	if lines <= 1 {
+		return skip, 0, true
+	}
+	gap := d.MinorStride - d.Bits
+	if abs(d.MinorStride) < abs(gap) {
+		gap = d.MinorStride
+	}
+	if gap = abs(gap); gap%8 != 0 || gap/8 < skip {
+		return 0, 0, false
+	}
+	if per <= 1 {
+		return gap / 8, 0, true
+	}
+	return skip, gap/8 - skip, true
+}
+
+// rowForm returns d for a table of one row with its cells stated along the
+// row. Column-major order makes each cell of such a table a column of its
+// own, so only the minor stride spaces them.
+func (d Data) rowForm(rows int) Data {
+	if !d.ColumnMajor || rows != 1 {
+		return d
+	}
+	gap := d.MinorStride - d.Bits
+	if abs(d.MinorStride) < abs(gap) {
+		gap = d.MinorStride
+	}
+	step := d.Bits + abs(gap)
+	if d.MinorStride < 0 {
+		step = -step
+	}
+	if step == d.Bits {
+		step = 0
+	}
+	d.MajorStride, d.MinorStride, d.ColumnMajor = step, 0, false
+	return d
+}
+
+// A 2d-inverse KP map and a column-major table hold the same cells. WinOLS
+// shows a 2d-inverse map with its stored lines as the columns: its cell
+// address routine swaps the column and the row before it places the cell.
+// The model keeps such a map in stored order, with Inverse set.
+
+// AsColumnMajor returns a 2d-inverse object as the column-major table its map
+// window shows: rows and columns swapped, every cell where it was. Any other
+// object is returned as it is.
+func (o *Object) AsColumnMajor() *Object {
+	if !o.Inverse || o.Shape != "2d" || o.Data.ColumnMajor {
+		return o
+	}
+	c := *o
+	c.Rows, c.Cols, c.Inverse = o.Cols, o.Rows, false
+	c.Data.ColumnMajor = true
+	return &c
+}
+
+// AsInverse returns a column-major table as the 2d-inverse object that holds
+// the same cells in stored order. Any other object is returned as it is.
+func (o *Object) AsInverse() *Object {
+	if o.Inverse || o.Shape != "2d" || !o.Data.ColumnMajor {
+		return o
+	}
+	c := *o
+	c.Rows, c.Cols, c.Inverse = o.Cols, o.Rows, true
+	c.Data.ColumnMajor = false
+	return &c
+}
+
 func abs(v int) int {
 	if v < 0 {
 		return -v
