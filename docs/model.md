@@ -23,6 +23,7 @@ The format-neutral model every reader converts into and every writer converts ou
 - `project`: `name`, `version`.
 - `categories`: `id`, `name` (KP folders).
 - `objects`: in source order. Each has `key`, `id`, `description`, `comment`, `categories`, `shape` (`value` / `1d` / `2d`), `inverse` (KP "2d Inverse", unconfirmed), `vislevel` (TunerPro level; 1 = WinOLS map-list marker / KP `Marked`; unmarked 0 writes as XDF level 2), `address`, `rows`, `cols`, `data` (`bits`, `endian`, `signed`, `float`), `value` (description, units, precision, conversion, optional min/max), `view` (`base`, `difference`, `percent`), axes `x`/`y`, optional `alternates`.
+- `data.majorStride`, `data.minorStride`, `data.columnMajor`: where cells sit when they are not packed row after row, as TunerPro places them (`model/layout.go`). KP has no field for them.
 - `min` / `max`: display units; omitted when the source has none. XDF writer emits only when both are set. KP stores a raw typed pair per width (`kp-format.md`); convert with the map conversion. Missing model pair → default raw span; KP default pair omitted from the model.
 - `view.base`: 10, 16 or 2 (omitted → 10). WinOLS crashes on base 0. A defined axis with no storage is an 8-bit ordinal.
 - `alternates`: other displays of the same cells (own id, description, categories, value, view; optional axis display). Address and storage stay on the object. `merge --smart` adds one when two objects share a raw layout and differ in units or conversion (`design.md`).

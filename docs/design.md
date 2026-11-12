@@ -44,7 +44,7 @@ xdfkit merge [--smart] [--update] [--overwrite] [-n]
 - `--description` / `--comment` override the mode default and do not copy layout. Default without `--update`/`--overwrite`: `keep`. `--update` fills empty description and appends new comment lines. `--overwrite` replaces both when incoming text is non-empty.
 - `--smart`: fold by span before the name pass. Same display with different categories → one object (union). Different display at the same raw layout → alternate (`model.md`).
 - New names appended; generator defaults on new maps reported `default`. Base names missing from incoming: `missing`. Report actions: `added`, `kept`, `corrected`, `description`, `comment`, `units`, `default`, `missing`, `ambiguous`, `overlap`, `categories`, `alternate`, `overwritten`, `skipped`.
-- XDF output: one table per category and per alternate (`stamp-and-metadata.md`). KP output: first category only.
+- XDF output: one table holds up to three categories (TunerPro's slots A, B and C); a further category and each alternate is an extra table (`stamp-and-metadata.md`). KP output: first category only.
 
 ## Architecture
 

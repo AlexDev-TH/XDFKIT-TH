@@ -158,6 +158,10 @@
           ],
           "type": "integer"
         },
+        "columnMajor": {
+          "description": "Cells are stored column by column; the strides then run along columns.",
+          "type": "boolean"
+        },
         "endian": {
           "description": "Byte order of cells wider than 8 bits.",
           "enum": [
@@ -169,6 +173,14 @@
         "float": {
           "description": "IEEE 754 floating point.",
           "type": "boolean"
+        },
+        "majorStride": {
+          "description": "Bits from one cell to the next along a row, when that is not the cell width (TunerPro's major stride). Negative: the cells of a row are stored in reverse.",
+          "type": "integer"
+        },
+        "minorStride": {
+          "description": "Bits from the last cell of a row to the first cell of the next, when that is not the cell width (TunerPro's minor stride). Negative: the rows are stored in reverse.",
+          "type": "integer"
         },
         "signed": {
           "description": "Two's complement integers.",

@@ -217,12 +217,27 @@ func view(b []byte) (m *model.Model, uids, warnings []string, folds map[string]s
 			if t == e.o {
 				continue // a table of axis points that shows itself as its own axis
 			}
+			if a.n <= 1 {
+				continue // one point: nothing to read
+			}
 			if err != nil || t == nil || t.Rows*t.Cols != a.n {
 				warnings = append(warnings, fmt.Sprintf("%s %s %q: axis %s: the table it is linked to (%s) is missing or of another size; its labels are used",
 					e.r.XMLName.Local, e.r.UniqueID, trim(e.r.Title), a.id, uid))
 				continue
 			}
-			*a.x = linkedAxis(t, *a.x)
+			// The points are where the linked table's cells are. The address
+			// and stride left on the axis itself are TunerPro's leftovers.
+			// The conversion is the linked table's, unless the axis states one
+			// of its own (as this package's writer does).
+			if x, ok := linkedAxis(t, *a.x); ok {
+				if v, view, ok := e.r.ownValue(a.id, prec); ok && v.Conversion != (model.Conversion{Factor: 1}) {
+					x.Value.Conversion, x.Value.Precision, x.View = v.Conversion, v.Precision, view
+				}
+				*a.x = x
+			} else {
+				warnings = append(warnings, fmt.Sprintf("%s %s %q: axis %s: the cells of the table it is linked to (%s) are not evenly spaced; its labels are used",
+					e.r.XMLName.Local, e.r.UniqueID, trim(e.r.Title), a.id, uid))
+			}
 		}
 	}
 	for _, k := range slices.Sorted(maps.Keys(ignored)) {
@@ -300,12 +315,8 @@ func (r *robject) object(prec int, cats map[int]bool, defaultLE bool) (*model.Ob
 	if b := o.Data.Bits; b != 8 && b != 16 && b != 32 {
 		warnings = append(warnings, fmt.Sprintf("cells are %d bits wide; only 8, 16 and 32 can be kept", b))
 	}
-	if f, _ := parseHex(z.Data.TypeFlags); f&flagColMajor != 0 && o.Rows > 1 && o.Cols > 1 {
-		warnings = append(warnings, "cells are stored column by column (type flag 0x04); read row by row")
-	}
-	if z.Data.spaced(o.Data.Bits) {
-		warnings = append(warnings, fmt.Sprintf("cells are %d bits wide but spaced %d (major) and %d (minor) bits apart; read as packed",
-			o.Data.Bits, z.Data.MajorStrideBits, z.Data.MinorStrideBits))
+	if z.Data.StartBit != 0 {
+		warnings = append(warnings, fmt.Sprintf("cells start at bit %d of their bytes (mmedstartbit); read from bit 0", z.Data.StartBit))
 	}
 	o.Value, o.View, err = z.value(prec)
 	if err != nil {
@@ -335,7 +346,7 @@ func (r *robject) axis(id string, prec int, defaultLE bool) (*model.Axis, error)
 	a := &r.Axes[i]
 	v, view, err := a.value(prec)
 	x := &model.Axis{Source: "ordinal", Value: v, View: view}
-	if a.Data.Address == "" {
+	if !a.embedded() {
 		if a.IndexCount <= 1 {
 			return nil, err
 		}
@@ -351,45 +362,85 @@ func (r *robject) axis(id string, prec int, defaultLE bool) (*model.Axis, error)
 	}
 	ad, d := model.Addr(addr), a.Data.data(defaultLE)
 	x.Source, x.Stored, x.Address, x.Data = "image", "absolute", &ad, &d
-	if err == nil && a.Data.spaced(d.Bits) {
-		err = fmt.Errorf("points are %d bits wide but spaced %d bits apart; read as packed", d.Bits, a.Data.MajorStrideBits)
+	if err == nil && d.MajorStride < 0 {
+		// TunerPro's default for a new axis is -32, which it then applies:
+		// worth a look when the file was made by a script.
+		err = fmt.Errorf("stride %d: the points are read in reverse, %d bits apart, as TunerPro reads them", d.MajorStride, -d.MajorStride)
 	}
 	return x, err
+}
+
+// embedded reports an axis whose points are read from the image at its own
+// address. TunerPro leaves the address on an axis that was switched to labels
+// or to another table's cells, so the address alone does not say: embedinfo
+// does. Type 1 is the image; type 3 is another table, settled once every
+// table is read. A file without embedinfo, from another writer, is read from
+// its address unless it has labels.
+func (a *raxis) embedded() bool {
+	if strings.TrimSpace(a.Data.Address) == "" {
+		return false
+	}
+	if a.EmbedInfo == nil {
+		return len(a.Labels) == 0
+	}
+	return a.EmbedInfo.Type == 1
+}
+
+// ownValue is the conversion an axis states for itself.
+func (r *robject) ownValue(id string, prec int) (model.Value, model.View, bool) {
+	i := slices.IndexFunc(r.Axes, func(a raxis) bool { return a.ID == id })
+	if i < 0 {
+		return model.Value{}, model.View{}, false
+	}
+	v, view, err := r.Axes[i].value(prec)
+	return v, view, err == nil
 }
 
 // flagColMajor is the EMBEDDEDDATA type flag for cells stored column by column.
 const flagColMajor = 0x04
 
-// spaced reports cells that are not packed: a stride other than the cell
-// width. The writer's own label axes carry a negative stride, which is none.
-func (e embedded) spaced(bits int) bool {
-	return e.MajorStrideBits > 0 && e.MajorStrideBits != bits || e.MinorStrideBits > 0 && e.MinorStrideBits != bits
-}
-
-// link is the uniqueid of the table an axis takes its points from, for an
-// axis with no address of its own.
+// link is the uniqueid of the table an axis takes its points from.
 func (r *robject) link(id string) string {
 	i := slices.IndexFunc(r.Axes, func(a raxis) bool { return a.ID == id })
 	if i < 0 {
 		return ""
 	}
 	a := &r.Axes[i]
-	if a.Data.Address != "" || a.EmbedInfo == nil || a.EmbedInfo.Type != 3 {
+	if a.EmbedInfo == nil || a.EmbedInfo.Type != 3 {
 		return ""
 	}
 	return strings.TrimSpace(a.EmbedInfo.LinkID)
 }
 
-// linkedAxis is the axis whose points are table t's cells. The axis's own
-// units, when it has any, stay.
-func linkedAxis(t *model.Object, cur *model.Axis) *model.Axis {
-	addr, d := t.Address, t.Data
+// linkedAxis is the axis whose points are table t's cells, in the table's own
+// order. An axis is one row of points, so the table's layout is restated for
+// a row: a column of cells four bytes apart is a row with that stride. It
+// reports false when the cells are not evenly spaced, which a row cannot say.
+// The axis's own units, when it has any, stay.
+func linkedAxis(t *model.Object, cur *model.Axis) (*model.Axis, bool) {
+	addr := t.Address
+	d := model.Data{Bits: t.Data.Bits, Endian: t.Data.Endian, Signed: t.Data.Signed, Float: t.Data.Float}
+	if n := t.Rows * t.Cols; n > 1 && t.Data.Spaced() {
+		at := func(i int) int { return t.Data.CellOffset(i/t.Cols, i%t.Cols, t.Rows, t.Cols) }
+		step := at(1) - at(0)
+		for i := 2; i < n; i++ {
+			if at(i)-at(i-1) != step {
+				return nil, false
+			}
+		}
+		switch {
+		case step == 0 || step < 0 && at(n-1) != 0 || step > 0 && at(0) != 0:
+			return nil, false
+		case step*8 != d.Bits:
+			d.MajorStride = step * 8 // negative: the points are stored in reverse
+		}
+	}
 	x := &model.Axis{Source: "image", Stored: "absolute", Address: &addr, Data: &d, Value: t.Value, View: t.View}
 	x.Value.Min, x.Value.Max = nil, nil
 	if cur != nil && cur.Value.Units != "" {
 		x.Value.Units = cur.Value.Units
 	}
-	return x
+	return x, true
 }
 
 // fixed returns an axis's labels as fixed axis points: the values, with the
@@ -504,6 +555,16 @@ func (e embedded) data(defaultLE bool) model.Data {
 		}
 		d.Endian = map[bool]string{true: "little", false: "big"}[le]
 	}
+	// Strides other than the cell width, and the column order, place the
+	// cells (model.Data.CellOffset). TunerPro ignores the order flag on data
+	// without a row count.
+	if e.MajorStrideBits != 0 && e.MajorStrideBits != d.Bits {
+		d.MajorStride = e.MajorStrideBits
+	}
+	if e.MinorStrideBits != 0 && e.MinorStrideBits != d.Bits {
+		d.MinorStride = e.MinorStrideBits
+	}
+	d.ColumnMajor = f&flagColMajor != 0 && e.RowCount > 0
 	return d
 }
 

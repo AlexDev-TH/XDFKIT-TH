@@ -81,33 +81,37 @@ type category struct {
 	Name  string `xml:"name,attr"`
 }
 
+// maxCategories is how many categories TunerPro keeps on one table: its
+// slots A, B and C, written as CATEGORYMEM index 0, 1 and 2.
+const maxCategories = 3
+
 type categoryMem struct {
 	Index    int `xml:"index,attr"`
 	Category int `xml:"category,attr"`
 }
 
 type table struct {
-	XMLName     xml.Name    `xml:"XDFTABLE"`
-	UniqueID    string      `xml:"uniqueid,attr"`
-	VisLevel    string      `xml:"vislevel,attr"`
-	Flags       string      `xml:"flags,attr"`
-	Title       string      `xml:"title,omitempty"`
-	Description string      `xml:"description,omitempty"`
-	CategoryMem categoryMem `xml:"CATEGORYMEM"`
-	Axes        []axis      `xml:"XDFAXIS"`
+	XMLName     xml.Name      `xml:"XDFTABLE"`
+	UniqueID    string        `xml:"uniqueid,attr"`
+	VisLevel    string        `xml:"vislevel,attr"`
+	Flags       string        `xml:"flags,attr"`
+	Title       string        `xml:"title,omitempty"`
+	Description string        `xml:"description,omitempty"`
+	CategoryMem []categoryMem `xml:"CATEGORYMEM"`
+	Axes        []axis        `xml:"XDFAXIS"`
 }
 
 type constant struct {
-	XMLName     xml.Name    `xml:"XDFCONSTANT"`
-	UniqueID    string      `xml:"uniqueid,attr"`
-	VisLevel    string      `xml:"vislevel,attr"`
-	Title       string      `xml:"title,omitempty"`
-	Description string      `xml:"description,omitempty"`
-	CategoryMem categoryMem `xml:"CATEGORYMEM"`
-	Data        embedded    `xml:"EMBEDDEDDATA"`
-	Units       string      `xml:"units,omitempty"`
-	OutputType  string      `xml:"outputtype,omitempty"`
-	DecimalPl   *int        `xml:"decimalpl"`
+	XMLName     xml.Name      `xml:"XDFCONSTANT"`
+	UniqueID    string        `xml:"uniqueid,attr"`
+	VisLevel    string        `xml:"vislevel,attr"`
+	Title       string        `xml:"title,omitempty"`
+	Description string        `xml:"description,omitempty"`
+	CategoryMem []categoryMem `xml:"CATEGORYMEM"`
+	Data        embedded      `xml:"EMBEDDEDDATA"`
+	Units       string        `xml:"units,omitempty"`
+	OutputType  string        `xml:"outputtype,omitempty"`
+	DecimalPl   *int          `xml:"decimalpl"`
 	link
 	Math equation `xml:"MATH"`
 }
@@ -139,6 +143,7 @@ type embedded struct {
 	ColCount        int    `xml:"mmedcolcount,attr,omitempty"`
 	MajorStrideBits int    `xml:"mmedmajorstridebits,attr,omitempty"`
 	MinorStrideBits int    `xml:"mmedminorstridebits,attr,omitempty"`
+	StartBit        int    `xml:"mmedstartbit,attr,omitempty"`
 }
 
 // embedInfo is type 1 for axis points read from the image, or type 3 with the
@@ -309,16 +314,20 @@ func categories(m *model.Model) ([]string, map[int]int) {
 	return names, idx
 }
 
-// expansions are the extra tables of o: one per category after the first, and
-// one per alternate per alternate category. A map with one category and no
-// alternate has none, so archive packs are unchanged.
+// expansions are the extra tables of o: one per category beyond the three a
+// table holds itself (maxCategories), and one per alternate per alternate
+// category. A map with up to three categories and no alternate has none: it
+// is one table in TunerPro, in each of its categories, not a copy per
+// category.
 func expansions(o *model.Object) []*model.Object {
-	if len(o.Categories) < 2 && len(o.Alternates) == 0 {
+	if len(o.Categories) <= maxCategories && len(o.Alternates) == 0 {
 		return nil
 	}
 	var out []*model.Object
-	for _, id := range o.Categories[1:] {
-		out = append(out, foldCopy(o, []int{id}, nil))
+	for i, id := range o.Categories {
+		if i >= maxCategories {
+			out = append(out, foldCopy(o, []int{id}, nil))
+		}
 	}
 	for i := range o.Alternates {
 		alt := &o.Alternates[i]
@@ -397,7 +406,12 @@ func object(o *model.Object, index int, catIndex map[int]int, link func(*model.O
 	if len(o.Categories) > 0 {
 		cat = catIndex[o.Categories[0]]
 	}
-	mem := categoryMem{Category: cat + 1}
+	mem := []categoryMem{{Category: cat + 1}}
+	for i, id := range o.Categories {
+		if i > 0 && i < maxCategories {
+			mem = append(mem, categoryMem{Index: i, Category: catIndex[id] + 1})
+		}
+	}
 	uid := hex(index + 1)
 	vl := xdfVisLevel(o)
 	prec := limitPrecision(o.Value, o.Data.Bits, o.Data.Signed)
@@ -545,7 +559,9 @@ func axisPoints(id string, x *model.Axis, size int, image []byte, static bool) (
 		}
 		a.OutputType = outputType(prec, base, shown(c, d, *x.Address, size, image))
 		a.Data = cells(d, *x.Address)
-		a.Data.MajorStrideBits = d.Bits
+		if d.MajorStride == 0 {
+			a.Data.MajorStrideBits = d.Bits
+		}
 		a.EmbedInfo = &embedInfo{Type: 1}
 		applyRange(&a, x.Value.Min, x.Value.Max)
 		a.Math = eqs(c)
@@ -604,7 +620,7 @@ func liveTable(id string, x *model.Axis, n int, cat categoryMem) *table {
 	z.Data.ColCount = 1
 	return &table{
 		UniqueID: id, VisLevel: "2", Flags: "0x0",
-		Title: hex(int(*x.Address)), Description: livePrefix, CategoryMem: cat,
+		Title: hex(int(*x.Address)), Description: livePrefix, CategoryMem: []categoryMem{cat},
 		Axes: []axis{
 			{ID: "x", UniqueID: "0x0", Data: stub, IndexCount: &one, link: &link{}, Math: ident},
 			{ID: "y", UniqueID: "0x0", Data: stub, IndexCount: &n, link: &link{}, Math: ident},
@@ -674,7 +690,10 @@ func cells(d model.Data, addr model.Addr) embedded {
 	if d.Float {
 		f |= flagFloat
 	}
-	e := embedded{Address: hex(int(addr)), ElementSizeBits: d.Bits}
+	if d.ColumnMajor {
+		f |= flagColMajor
+	}
+	e := embedded{Address: hex(int(addr)), ElementSizeBits: d.Bits, MajorStrideBits: d.MajorStride, MinorStrideBits: d.MinorStride}
 	if f != 0 || d.Bits > 8 {
 		e.TypeFlags = fmt.Sprintf("0x%02X", f)
 	}
@@ -715,7 +734,7 @@ func positiveInts(vals []float64) bool {
 func shown(c model.Conversion, d model.Data, addr model.Addr, n int, image []byte) []float64 {
 	w := d.Bits / 8
 	start := int(addr)
-	if d.Float || w == 0 || n < 1 || image == nil || start < 0 || start+n*w > len(image) {
+	if d.Float || w == 0 || n < 1 || image == nil || start < 0 || start+n*w > len(image) || d.Spaced() {
 		return nil
 	}
 	order := byteOrder(d)

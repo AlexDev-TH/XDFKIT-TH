@@ -32,8 +32,13 @@ func TestFoldRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(x), "<XDFCONSTANT ") != 2 || !strings.Contains(string(x), foldPrefix) {
-		t.Fatalf("expansion missing in %s", x)
+	// One table in both categories (TunerPro's slots A and B), not a copy per category.
+	if strings.Count(string(x), "<XDFCONSTANT ") != 1 || strings.Contains(string(x), foldPrefix) ||
+		!strings.Contains(string(x), `<CATEGORYMEM index="0" category="2">`) || !strings.Contains(string(x), `<CATEGORYMEM index="1" category="1">`) {
+		t.Fatalf("two categories on one table expected in %s", x)
+	}
+	if plain, _, err := Read(x, nil); err != nil || len(plain.Objects) != 1 || len(plain.Objects[0].Categories) != 2 {
+		t.Fatalf("read without metadata: %v %#v", err, plain.Objects)
 	}
 	meta, err := Meta(folded, x, "test")
 	if err != nil {

@@ -132,7 +132,7 @@ func ranges(o *model.Object, image []byte) ([]string, error) {
 	w := o.Data.Bits / 8
 	n := o.Rows * o.Cols
 	start := int(o.Address)
-	if start+n*w > len(image) {
+	if start+o.Data.Extent(o.Rows, o.Cols) > len(image) {
 		return nil, fmt.Errorf("cells at %s run past the image end", hex(uint64(o.Address)))
 	}
 	var order binary.ByteOrder = binary.LittleEndian
@@ -142,7 +142,7 @@ func ranges(o *model.Object, image []byte) ([]string, error) {
 	var lo, hi float64
 	var rlo, rhi uint64
 	for i := range n {
-		c := image[start+i*w:]
+		c := image[start+o.Data.CellOffset(i/o.Cols, i%o.Cols, o.Rows, o.Cols):]
 		var u uint64
 		switch w {
 		case 1:

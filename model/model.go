@@ -111,6 +111,10 @@ type Data struct {
 	Endian string `json:"endian,omitempty" doc:"Byte order of cells wider than 8 bits." enum:"big|little"`
 	Signed bool   `json:"signed,omitzero" doc:"Two's complement integers."`
 	Float  bool   `json:"float,omitzero" doc:"IEEE 754 floating point."`
+	// Layout of cells that are not packed row after row (layout.go).
+	MajorStride int  `json:"majorStride,omitzero" doc:"Bits from one cell to the next along a row, when that is not the cell width (TunerPro's major stride). Negative: the cells of a row are stored in reverse."`
+	MinorStride int  `json:"minorStride,omitzero" doc:"Bits from the last cell of a row to the first cell of the next, when that is not the cell width (TunerPro's minor stride). Negative: the rows are stored in reverse."`
+	ColumnMajor bool `json:"columnMajor,omitzero" doc:"Cells are stored column by column; the strides then run along columns."`
 }
 
 // Value is what cells mean.
