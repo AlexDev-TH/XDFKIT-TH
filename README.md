@@ -48,11 +48,27 @@ WinOLS และ TunerPro บน Windows ภาษาไทยเก็บข้
 
 ข้อความที่ไม่ใช่ภาษาไทยจะถูกส่งผ่านเอนจินตามเดิมโดยไม่แตะต้อง
 
+### ชื่อตารางระหว่าง WinOLS กับ TunerPro
+
+WinOLS แสดงรายการแมพด้วยชื่อเต็ม ส่วน TunerPro แสดงด้วยชื่อหัวตารางอย่างเดียว โปรแกรมจึงจัดชื่อให้ตรงกับที่แต่ละโปรแกรมแสดง
+
+- KP ไป XDF: หัวตารางใน TunerPro เป็น `รหัส: ชื่อเต็ม` เช่น `NZMSMN: untere Drehzahlgrenze für ZMS-Schutz` และหมวดของ WinOLS กลายเป็นหมวดใน TunerPro
+- XDF ที่ทำใน TunerPro ไป KP: หัวตารางเป็นชื่อแมพใน WinOLS ส่วนคำอธิบายไปอยู่ในช่องหมายเหตุของแมพ
+- แปลงกลับทางเดิมแล้วได้ชื่อ รหัส และคำอธิบายเหมือนต้นฉบับ
+
+### ความถูกต้องของการแปลง
+
+ชุดทดสอบในโฟลเดอร์ `app` อ่านไฟล์ XDF ที่แปลงได้ด้วยตัวอ่าน XML ธรรมดาที่ไม่เกี่ยวกับเอนจิน แล้วเทียบกับไฟล์ต้นทางทีละตารางทุกช่อง ได้แก่ ชื่อ คำอธิบาย หมวด แอดเดรส ขนาด จำนวนบิต เครื่องหมาย ลำดับไบต์ สูตร ทศนิยม หน่วย และแกน จากนั้นแปลงกลับเป็น KP แล้วเทียบกับต้นทางทีละตารางอีกรอบ ไฟล์ตัวอย่างที่ใช้ทดสอบมี 4,572 ตาราง
+
 ### สิ่งที่ควรรู้
 
 - ไฟล์ต้นฉบับจะไม่ถูกเขียนทับ ถ้าปลายทางมีไฟล์ชื่อเดียวกันอยู่ โปรแกรมจะหยุดจนกว่าจะเปิดตัวเลือก "เขียนทับไฟล์ที่มีอยู่"
 - แปลงเป็น XDF จะได้ไฟล์ `.meta.json` คู่กันมาด้วย เก็บไว้ข้างไฟล์ XDF จะแปลงกลับเป็น KP ได้เหมือนเดิม
 - ไฟล์ KP บางรุ่นเอนจินยังอ่านไม่ได้ โปรแกรมจะแจ้งข้อความจากเอนจินให้เห็นตรง ๆ
+- ตาราง XDF ที่เก็บข้อมูลแบบเว้นช่วง (stride) เรียงตามคอลัมน์ หรือใช้เซลล์ 1 บิต ยังแปลงให้ตรงไม่ได้ โปรแกรมจะเตือนเป็นรายตาราง
+- สูตรใน XDF ที่ไม่ใช่สูตรเส้นตรง เช่น สูตรยกกำลัง เก็บลง KP ไม่ได้ จะอ่านค่าเป็น X ตรง ๆ พร้อมคำเตือน
+- รายการ XDFFLAG, XDFPATCH, XDFFUNCTION และ XDFCHECKSUM ไม่มีที่เก็บในรูปแบบอื่น จึงไม่ถูกแปลงไปด้วย
+- ไฟล์นามสกุล .xdf ที่ไม่ใช่ XML ของ TunerPro อ่านไม่ได้
 - การตรวจแกน KP รองรับ ECU ตระกูล Bosch ME7 และ Motronic M3/M5 ตามที่เอนจินรองรับ
 
 ## สร้างจากซอร์ส
@@ -83,9 +99,21 @@ go test ./...          # ส่วนเชื่อมหน้าต่าง�
 | --- | --- |
 | `app/` | โปรแกรมหน้าต่าง เขียนด้วย Go กับ Wails ส่วนหน้าจอเป็น React กับ TypeScript |
 | `app/branding/` | โลโก้ แบนเนอร์ และสคริปต์สร้างไอคอน |
-| `api/`, `kp/`, `xdf/`, `a2l/`, `dam/`, `model/`, `lint/`, `canon/`, `mapcsv/` | เอนจิน xdfkit ต้นฉบับ ไม่ได้แก้ไข |
+| `api/`, `kp/`, `xdf/`, `a2l/`, `dam/`, `model/`, `lint/`, `canon/`, `mapcsv/` | เอนจิน xdfkit โดยส่วนอ่านและเขียน XDF มีการแก้ตามหัวข้อด้านล่าง |
 | `cmd/xdfkit/` | โปรแกรมบรรทัดคำสั่งของต้นฉบับ ยังใช้ได้ตามปกติ |
 | `docs/` | เอกสารของเอนจินต้นฉบับ ภาษาอังกฤษ |
+
+## สิ่งที่แก้จากเอนจินต้นฉบับ
+
+ทั้งหมดอยู่ในโฟลเดอร์ `xdf/` และมีเทสต์กำกับ
+
+- แกนที่ลิงก์ไปยังตารางอื่น อ่านเป็นแกนจริงจากตารางนั้น เดิมอ่านเป็นลำดับ 0, 1, 2
+- แกนที่พิมพ์ค่ากำกับไว้เอง เก็บค่าตามที่พิมพ์ เดิมค่าหายเหลือแต่ลำดับ
+- สูตรของตาราง ใช้สูตรของทั้งตาราง เดิมหยิบสูตรเฉพาะเซลล์มาใช้แทนในบางไฟล์ และสูตรที่มีการขึ้นบรรทัดใหม่ถูกทิ้ง
+- ชื่อหัวตาราง เขียนเต็มทั้งชื่อ เดิมตัดเหลือคำแรก
+- จำนวนทศนิยม ใช้ตามไฟล์ต้นทาง เดิมถูกตัดลงตามค่าสูงสุดของชนิดข้อมูล
+- จุดท้ายของแกนค่าคงที่ที่เป็นศูนย์ แสดงเป็นศูนย์ เดิมแสดงเป็นเลขลำดับ
+- เตือนเมื่อเจอรูปแบบที่ยังเก็บไม่ได้ ได้แก่ stride การเรียงตามคอลัมน์ เซลล์ที่ไม่ใช่ 8, 16, 32 บิต และ BASEOFFSET
 
 ## เครดิตและสัญญาอนุญาต
 
@@ -100,4 +128,4 @@ go test ./...          # ส่วนเชื่อมหน้าต่าง�
 
 XDFKIT-TH is a Windows desktop app for converting ECU map definitions between WinOLS KP, TunerPro XDF, A2L, DAMOS, JSON and YAML. It shows map values read from a flash image, checks and fixes KP axes, merges definitions, and reads and writes Thai text (Windows-874) in KP and XDF files. The interface is in Thai and English, with dark and light themes.
 
-It is built by AlexDev-TH on the unmodified [xdfkit](https://github.com/nyetlabs/xdfkit) engine by nyetlabs, under the same licence, LGPL-3.0-or-later. Download `XDFKIT-TH.exe` from the Releases page, or build it with `app/build.ps1`.
+It is built by AlexDev-TH on the [xdfkit](https://github.com/nyetlabs/xdfkit) engine by nyetlabs, with fixes to its XDF reader and writer (linked axes, fixed axis labels, table equations, whole titles, decimal places), under the same licence, LGPL-3.0-or-later. Download `XDFKIT-TH.exe` from the Releases page, or build it with `app/build.ps1`.
