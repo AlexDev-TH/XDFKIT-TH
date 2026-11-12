@@ -299,6 +299,9 @@ func (m *Model) KP(template *kp.File) (*kp.File, error) {
 		return nil, err
 	}
 	t := template
+	if t != nil && t.HeaderID >= kp.HeaderSealed {
+		return nil, fmt.Errorf("kp: a pack of header %d cannot be the template: WinOLS ties the end of such a file to its place in the file, and a pack with other maps does not open", t.HeaderID)
+	}
 	if t == nil {
 		var err error
 		if t, err = kp.Parse(emptyKP); err != nil {

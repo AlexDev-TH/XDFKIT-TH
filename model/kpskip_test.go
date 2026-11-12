@@ -44,8 +44,9 @@ func skipModel() *Model {
 }
 
 // TestKPSkipBytes: a KP states gaps between cells by skip bytes. A pack of
-// header 292 has them for axis points only; a WinOLS 5 pack as template holds
-// those of map cells too, and they read back as the strides they came from.
+// header 292 has them for axis points only. A WinOLS 5 pack would hold those
+// of map cells too, but it cannot be written with other maps (kp.HeaderSealed),
+// so it is turned down as a template.
 func TestKPSkipBytes(t *testing.T) {
 	m := skipModel()
 	if noForm, tooOld := m.KPLayoutLost(KPDefaultHeader); noForm != 1 || tooOld != 2 {
@@ -55,38 +56,55 @@ func TestKPSkipBytes(t *testing.T) {
 		t.Errorf("header 503: %d without a form and %d needing a later pack, want 1 and 0", noForm, tooOld)
 	}
 
-	back := func(template *kp.File) (*kp.File, *Model) {
-		t.Helper()
-		f, err := m.KP(template)
-		if err != nil {
-			t.Fatal(err)
-		}
-		out, err := f.Encode()
-		if err != nil {
-			t.Fatal(err)
-		}
-		g, err := kp.Parse(out)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return g, FromKP(g)
-	}
-
 	// The pack KP writes by itself: the axis keeps its skip, the cells are packed.
-	f, got := back(nil)
-	if f.HeaderID != KPDefaultHeader {
-		t.Fatalf("header %d", f.HeaderID)
+	f, err := m.KP(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := f.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := kp.Parse(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := FromKP(g)
+	if g.HeaderID != KPDefaultHeader {
+		t.Fatalf("header %d", g.HeaderID)
+	}
+	if km := g.Project.Maps[0]; km.X.SkipBytes != 1 {
+		t.Errorf("paired axis: skip %d in the pack", km.X.SkipBytes)
 	}
 	if x := got.Objects[0].X; x == nil || x.Data == nil || x.Data.MajorStride != 16 {
-		t.Errorf("header %d: paired axis read back as %+v", f.HeaderID, x)
+		t.Errorf("paired axis read back as %+v", x)
 	}
 	if d := got.Objects[0].Data; d.Spaced() {
-		t.Errorf("header %d: paired cells read back as %+v", f.HeaderID, d)
+		t.Errorf("paired cells read back as %+v", d)
 	}
-	if o := got.Objects[2]; !o.Inverse || o.Rows != 3 || o.Cols != 2 {
-		t.Errorf("header %d: column-major table read back as %+v", f.HeaderID, o)
+	if km := g.Project.Maps[2]; km.Organization != kp.OrgTwoDInv || km.Cols != 2 || km.Rows != 3 || km.StoredCols != 3 || km.StoredRows != 2 {
+		t.Errorf("columns: %v, %d cells in %d lines, shown %d by %d", km.Organization, km.Cols, km.Rows, km.StoredCols, km.StoredRows)
+	}
+	// Read back, the 2d-inverse map has every cell where the column-major table had it.
+	o, back := m.Objects[2], got.Objects[2].AsColumnMajor()
+	if back.Rows != o.Rows || back.Cols != o.Cols {
+		t.Fatalf("columns read back %d by %d, want %d by %d", back.Rows, back.Cols, o.Rows, o.Cols)
+	}
+	for r := range o.Rows {
+		for c := range o.Cols {
+			if a, b := back.Data.CellOffset(r, c, back.Rows, back.Cols), o.Data.CellOffset(r, c, o.Rows, o.Cols); a != b {
+				t.Errorf("columns: cell %d,%d at %d, want %d", r, c, a, b)
+			}
+		}
 	}
 
+	// The skip bytes a later pack holds are read into the same strides.
+	later := &kp.Map{Organization: kp.OrgTwoD, Type: 3, Width: 2, Cols: 5, Rows: 4, SkipBytes: 2, LineSkipBytes: 2, X: &kp.Axis{}, Y: &kp.Axis{}}
+	if d := objectFromKP(later, false).Data; d.MajorStride != 32 || d.MinorStride != 48 {
+		t.Errorf("skip 2 and line skip 2 read as strides %d and %d, want 32 and 48", d.MajorStride, d.MinorStride)
+	}
+
+	// A WinOLS 5 pack is not a template, and is encoded only as it was read.
 	b, err := os.ReadFile(filepath.Join(testenv.ModuleRoot(), "testdata", "kp", "503-fewmaps.kp"))
 	if err != nil {
 		t.Fatal(err)
@@ -95,41 +113,14 @@ func TestKPSkipBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, got = back(template)
-	if f.HeaderID != 503 || len(f.Project.Maps) != len(m.Objects) {
-		t.Fatalf("header %d, %d maps", f.HeaderID, len(f.Project.Maps))
+	if _, err := m.KP(template); err == nil {
+		t.Error("a header 503 pack was taken as the template")
 	}
-	if km := f.Project.Maps[0]; km.SkipBytes != 1 || km.LineSkipBytes != 0 || km.X.SkipBytes != 1 || km.End != 0x101+16 {
-		t.Errorf("pairs: skip %d, line skip %d, axis skip %d, end %#x", km.SkipBytes, km.LineSkipBytes, km.X.SkipBytes, km.End)
+	if _, err := template.Encode(); err != nil {
+		t.Errorf("header 503 pack as read: %v", err)
 	}
-	if km := f.Project.Maps[1]; km.SkipBytes != 0 || km.LineSkipBytes != 2 || km.End != 0x200+4*5*2+4*2 {
-		t.Errorf("lines: skip %d, line skip %d, end %#x", km.SkipBytes, km.LineSkipBytes, km.End)
-	}
-	if km := f.Project.Maps[2]; km.Organization != kp.OrgTwoDInv || km.Cols != 2 || km.Rows != 3 || km.StoredCols != 3 || km.StoredRows != 2 {
-		t.Errorf("columns: %v, %d cells in %d lines, shown %d by %d", km.Organization, km.Cols, km.Rows, km.StoredCols, km.StoredRows)
-	}
-	// The table stored backwards has no form: it is written packed.
-	if km := f.Project.Maps[3]; km.SkipBytes != 0 || km.LineSkipBytes != 0 {
-		t.Errorf("backwards table: skip %d, line skip %d", km.SkipBytes, km.LineSkipBytes)
-	}
-	for i, want := range []Data{m.Objects[0].Data, m.Objects[1].Data} {
-		if d := got.Objects[i].Data; d.MajorStride != want.MajorStride || d.MinorStride != want.MinorStride {
-			t.Errorf("object %d: strides %d and %d read back, want %d and %d", i, d.MajorStride, d.MinorStride, want.MajorStride, want.MinorStride)
-		}
-	}
-	// Every cell of the first three objects is where the model has it.
-	for i, o := range m.Objects[:3] {
-		g := got.Objects[i].AsColumnMajor()
-		if g.Rows != o.Rows || g.Cols != o.Cols {
-			t.Errorf("%s: %d by %d read back, want %d by %d", o.ID, g.Rows, g.Cols, o.Rows, o.Cols)
-			continue
-		}
-		for r := range o.Rows {
-			for c := range o.Cols {
-				if a, b := g.Data.CellOffset(r, c, g.Rows, g.Cols), o.Data.CellOffset(r, c, o.Rows, o.Cols); a != b {
-					t.Errorf("%s: cell %d,%d at %d, want %d", o.ID, r, c, a, b)
-				}
-			}
-		}
+	template.Project.Maps = template.Project.Maps[:1]
+	if _, err := template.Encode(); err == nil {
+		t.Error("a header 503 pack was encoded with fewer maps")
 	}
 }

@@ -35,6 +35,12 @@ const (
 	HeaderLineSkip = 395 // Map.LineSkipBytes
 )
 
+// HeaderSealed is the header id from which WinOLS enciphers the part of the
+// file after the folders with a key that takes in where that part starts. A
+// pack of such a header opens in WinOLS only while that part is where it was,
+// so it is written back with the maps and folders it had, not with others.
+const HeaderSealed = 375
+
 const (
 	header113 = 113
 	header116 = 116
@@ -79,6 +85,7 @@ type Project struct {
 
 	intern, zip []byte // v2/OLS5 as read: inflated map block and its zip archive
 	zipOff      int    // v2/OLS5 as read: offset of the zip length
+	tailOff     int    // as read: offset of Trailing (HeaderSealed)
 }
 
 // Folder is one map-list folder. The order and the header id each field
@@ -108,14 +115,16 @@ func Parse(data []byte) (f *File, err error) {
 	defer catch(&err)
 	f = &File{}
 	(&codec{b: data}).record(f)
+	f.Project.tailOff = len(data) - len(f.Project.Trailing)
 	return f, nil
 }
 
-// Encode serializes f. For v2 and OLS5 the map block is re-deflated only if it
+// Encode serializes f. For v2 the map block is re-deflated only if it
 // changed; WinOLS used zlib, so a fresh archive is equivalent but not
 // byte-identical. The length-derived fields (HeaderLen in v2 and OLS5,
 // EndOffset) are recomputed and stored back into f, so f matches what parsing
-// the output gives.
+// the output gives. A pack of HeaderSealed or later is encoded only while its
+// maps and folders take the room they took when it was read.
 // Header 245 is read-only until a save oracle exists.
 func (f *File) Encode() (out []byte, err error) {
 	if f.HeaderID == header245 {
@@ -124,6 +133,9 @@ func (f *File) Encode() (out []byte, err error) {
 	defer catch(&err)
 	c := &codec{enc: true, want: map[string]bool{"endOffset": true, "dataSize": true}, found: map[string]Location{}}
 	c.record(f)
+	if tail := len(c.b) - len(f.Project.Trailing); f.HeaderID >= HeaderSealed && tail != f.Project.tailOff {
+		return nil, fmt.Errorf("kp: a pack of header %d can only be written back with the maps and folders it had: WinOLS ties the end of the file to its place in the file", f.HeaderID)
+	}
 	if f.Layout() != V1 {
 		f.HeaderLen = int32(len(c.b))
 		binary.LittleEndian.PutUint32(c.b[headerLenOff:], uint32(f.HeaderLen))

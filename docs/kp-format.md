@@ -28,7 +28,11 @@ The int32 at offset 0x10 is a decimal header id. Headers that share a row share 
 | 292, 329 | 200+300 | file length | 0x60 | zip entry `intern` |
 | 503, 597 | 500 | file length | 0x60 | zip entry `intern` |
 
-329 is accepted for the file, project and folder walk of 292; no pack of that header has been seen, and the map record of a 329 pack has the fields its header id brings. WinOLS 2.24 writes header 292 and version `OLS 5.0 (Windows)`. 245 is a hybrid (unconfirmed mid skip): V1-sized fixed header (`HeaderLen` 0), V2 project/zip, header-body mid without term2a/`"Binary data"`; its map, axis and folder records are what header id 245 gives. 245 is read-only. 503 and 597 are written back with their own file and project parts kept raw (`kp/ols5.go`).
+329 is accepted for the file, project and folder walk of 292; no pack of that header has been seen, and the map record of a 329 pack has the fields its header id brings. WinOLS 2.24 writes header 292 and version `OLS 5.0 (Windows)`. 245 is a hybrid (unconfirmed mid skip): V1-sized fixed header (`HeaderLen` 0), V2 project/zip, header-body mid without term2a/`"Binary data"`; its map, axis and folder records are what header id 245 gives. 245 is read-only. 503 and 597 are read in full and written back only as they were ([Sealed packs](#sealed-packs)).
+
+## Sealed packs
+
+From header 375 WinOLS enciphers the part of the file after the folders, and the key takes in the file position where that part starts. A pack of such a header therefore opens in WinOLS only while everything before that part keeps its length. `kp.HeaderSealed` is that header id. `Encode` writes such a pack only with the maps and folders it was read with, and the model does not take one as a template. Tried with WinOLS 5.87: a header 503 pack written with other maps and the rest of the file kept is reported as corrupt (the read fails right where the enciphered part begins), while a header 292 pack written from the same definition is imported with all its maps and folders. This package does not implement the cipher.
 
 CI parse smoke uses minimal complete packs under `testdata/kp/` (one few-map fixture per header family: 116, 292, 245, 503, 597). Full private saves stay in `testdata/local/`; the frozen ecuxplot archive is separate and not for new fixtures.
 
@@ -100,7 +104,11 @@ From WinOLS's cell address routine. For the shown column x and row y of a map:
 
 The model keeps a KP map in stored order (`rows` stored lines of `cols` cells, `inverse` set on organisation 5) and states the skips as strides (`model/layout.go`): the major stride is `Width + SkipBytes`, and the gap after a row adds `LineSkipBytes` to the cell gap. A 2D-inverse map is written to XDF as the column-major table it is shown as, and a column-major table is written to KP as a 2D-inverse map. A layout with cells or rows in reverse, or with a row gap smaller than the gap between cells (a negative `LineSkipBytes`), is written packed and reported.
 
-A pack of header 292 holds `SkipBytes` for axes only. The skip bytes of map cells need a pack of header 329 or 395 and later, which the model writes when it is given such a pack as the template: the file and project parts come from the template.
+A pack of header 292 holds `SkipBytes` for axes only. The skip bytes of map cells need a pack of header 329 or 395 and later, and the packs of that kind that have been seen (503, 597) cannot be written with other maps ([Sealed packs](#sealed-packs)). So the skip bytes of map cells are read from such a pack but are not written to a KP; `Model.KPLayoutLost` counts the objects this leaves packed.
+
+## Folders
+
+Every pack WinOLS saves keeps folder id 0 for "My maps" (`BuiltIn` 9000) and id 1 for "Hexdump" (9001), and numbers the user's folders from 2 (237 packs checked). A map names one folder by `FolderID`. The model takes a category's KP-only fields from the template folder with the same id, so a model whose categories are not KP folders (an XDF numbers them from 0) has to be renumbered before it is written, or its first two categories become WinOLS's own folders. The desktop app does that, and puts each map in the narrowest of its categories (`app/names.go`).
 
 ## Axis
 
