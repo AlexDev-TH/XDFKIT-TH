@@ -128,7 +128,8 @@ func TestMetaEdit(t *testing.T) {
 	// 0x1's title, KFLDRQ2, repeats at 0x168: renaming it must not change
 	// 0x168's key
 	i, j := element("0x1")
-	s = s[:i] + strings.Replace(s[i:j], "<title>KFLDRQ2<", "<title>EDITED<", 1) + s[j:]
+	// The title is the whole id, "KFLDRQ2 (AR 27C02)".
+	s = s[:i] + strings.Replace(s[i:j], "<title>"+m.Objects[0].ID+"<", "<title>EDITED<", 1) + s[j:]
 	i, j = element("0x3")
 	if m.Objects[2].Shape == "value" {
 		t.Fatal("0x3 is a constant; pick a table")
@@ -151,9 +152,10 @@ func TestMetaEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 0x3's new factor is not in its metadata, so nothing of it is dropped
-	if len(ws) != 4 || !strings.HasPrefix(ws[0], "XDF edited") ||
-		ws[1] != `0x1 "EDITED": metadata not applied to id` ||
-		!strings.HasPrefix(ws[2], "0xFFFF ") || !strings.HasPrefix(ws[3], "0x4: ") {
+	// The title is the whole id now, so the metadata holds no id of its own
+	// for 0x1 and the rename overrides nothing in it.
+	if len(ws) != 3 || !strings.HasPrefix(ws[0], "XDF edited") ||
+		!strings.HasPrefix(ws[1], "0xFFFF ") || !strings.HasPrefix(ws[2], "0x4: ") {
 		t.Errorf("warnings %q", ws)
 	}
 	// 0x4 is gone and its copy, read without metadata, comes last

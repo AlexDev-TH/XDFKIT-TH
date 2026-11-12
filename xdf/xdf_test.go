@@ -308,14 +308,15 @@ func TestLimitPrecision(t *testing.T) {
 		signed bool
 		want   int
 	}{
-		{v(2, 1), 8, false, 2},      // 255: 3 + 2 digits
-		{v(4, 1), 8, false, 3},      // 255: 3 + 4 digits, cut to 3
-		{v(4, 1), 16, false, 1},     // 65535
-		{v(4, 1), 16, true, 1},      // 32767
-		{v(9, 0.001), 16, false, 4}, // 65.535
-		{v(4, 1), 32, false, 4},     // Java's 1<<32 == 1: raw 0
-		{v(4, 1), 0, false, 4},      // no storage: raw 0
-		{v(4, 100), 16, false, 0},   // 6553500
+		// The definition's own decimal places, whatever the cell type can hold.
+		{v(2, 1), 8, false, 2},
+		{v(4, 1), 8, false, 4},
+		{v(4, 1), 16, false, 4},
+		{v(3, 0.25), 16, false, 3}, // was cut to 1, showing 220.25 as 220.3
+		{v(4, 100), 16, false, 4},
+		{v(4, 1), 0, false, 4},
+		{v(9, 0.001), 16, false, 6}, // no more than maxDigits
+		{v(-1, 1), 8, false, 0},
 	} {
 		if got := limitPrecision(c.v, c.bits, c.signed); got != c.want {
 			t.Errorf("limitPrecision(%+v, %d, %v) = %d, want %d", c.v, c.bits, c.signed, got, c.want)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,7 +24,11 @@ type rdoc struct {
 	Header  struct {
 		FileVersion string `xml:"fileversion"`
 		Description string `xml:"description"`
-		Defaults    struct {
+		BaseOffset  struct {
+			Offset   string `xml:"offset,attr"`
+			Subtract string `xml:"subtract,attr"`
+		} `xml:"BASEOFFSET"`
+		Defaults struct {
 			SigDigits *int `xml:"sigdigits,attr"`
 			LSBFirst  *int `xml:"lsbfirst,attr"`
 		} `xml:"DEFAULTS"`
@@ -46,15 +51,32 @@ type robject struct {
 }
 
 type raxis struct {
-	ID         string   `xml:"id,attr"`
-	Data       embedded `xml:"EMBEDDEDDATA"`
-	Units      string   `xml:"units"`
-	IndexCount int      `xml:"indexcount"`
-	DecimalPl  *int     `xml:"decimalpl"`
-	Min        string   `xml:"min"`
-	Max        string   `xml:"max"`
-	OutputType string   `xml:"outputtype"`
-	Math       equation `xml:"MATH"`
+	ID         string     `xml:"id,attr"`
+	Data       embedded   `xml:"EMBEDDEDDATA"`
+	Units      string     `xml:"units"`
+	IndexCount int        `xml:"indexcount"`
+	DecimalPl  *int       `xml:"decimalpl"`
+	Min        string     `xml:"min"`
+	Max        string     `xml:"max"`
+	OutputType string     `xml:"outputtype"`
+	Maths      []equation `xml:"MATH"`
+	Labels     []label    `xml:"LABEL"`
+	EmbedInfo  *embedInfo `xml:"embedinfo"`
+}
+
+// equation is the axis's own equation. TunerPro also writes one MATH per row,
+// column or cell that has its own equation, after the axis's; those name a
+// row or a column and are not the conversion of the whole axis.
+func (a *raxis) equation() string {
+	for _, m := range a.Maths {
+		if m.Row == "" && m.Col == "" {
+			return m.Equation
+		}
+	}
+	if len(a.Maths) > 0 {
+		return a.Maths[0].Equation
+	}
+	return ""
 }
 
 // stampPrefix starts the stamp line in the header description, which the
@@ -110,6 +132,9 @@ func view(b []byte) (m *model.Model, uids, warnings []string, folds map[string]s
 		m.Categories = append(m.Categories, &model.Category{ID: int(id), Name: trim(c.Name)})
 		cats[int(id)] = true
 	}
+	if off := strings.TrimSpace(h.BaseOffset.Offset); off != "" && off != "0" {
+		warnings = append(warnings, fmt.Sprintf("BASEOFFSET %s (subtract %q) is not applied: addresses are read as file offsets", off, h.BaseOffset.Subtract))
+	}
 	prec := 2
 	if h.Defaults.SigDigits != nil {
 		prec = *h.Defaults.SigDigits
@@ -126,9 +151,13 @@ func view(b []byte) (m *model.Model, uids, warnings []string, folds map[string]s
 		n   uint64
 		ok  bool
 		o   *model.Object
+		r   *robject
 	}
 	var es []entry
 	ignored := map[string]int{}
+	// The writer's own helper tables (livePrefix) are left out of the model;
+	// an axis linked to one is the writer's live axis, not a table's cells.
+	live := map[uint64]bool{}
 	for i := range d.Objects {
 		r := &d.Objects[i]
 		if r.XMLName.Local != "XDFTABLE" && r.XMLName.Local != "XDFCONSTANT" {
@@ -136,6 +165,9 @@ func view(b []byte) (m *model.Model, uids, warnings []string, folds map[string]s
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(r.Description), livePrefix) {
+			if n, err := parseHex(r.UniqueID); err == nil {
+				live[n] = true
+			}
 			continue
 		}
 		o, ws, err := r.object(prec, cats, defaultLE)
@@ -154,7 +186,44 @@ func view(b []byte) (m *model.Model, uids, warnings []string, folds map[string]s
 			folds[r.UniqueID] = primary
 		}
 		n, err := parseHex(r.UniqueID)
-		es = append(es, entry{r.UniqueID, n, err == nil, o})
+		es = append(es, entry{r.UniqueID, n, err == nil, o, r})
+	}
+	// An axis without an address of its own can take its points from another
+	// table (TunerPro's linked axis): it is that table's cells, read from the image.
+	byUID := map[uint64]*model.Object{}
+	for _, e := range es {
+		if e.ok {
+			byUID[e.n] = e.o
+		}
+	}
+	for _, e := range es {
+		if e.o.Shape == "value" {
+			continue
+		}
+		for _, a := range []struct {
+			id string
+			x  **model.Axis
+			n  int
+		}{{"x", &e.o.X, e.o.Cols}, {"y", &e.o.Y, e.o.Rows}} {
+			uid := e.r.link(a.id)
+			if uid == "" {
+				continue
+			}
+			n, err := parseHex(uid)
+			if err == nil && live[n] {
+				continue
+			}
+			t := byUID[n]
+			if t == e.o {
+				continue // a table of axis points that shows itself as its own axis
+			}
+			if err != nil || t == nil || t.Rows*t.Cols != a.n {
+				warnings = append(warnings, fmt.Sprintf("%s %s %q: axis %s: the table it is linked to (%s) is missing or of another size; its labels are used",
+					e.r.XMLName.Local, e.r.UniqueID, trim(e.r.Title), a.id, uid))
+				continue
+			}
+			*a.x = linkedAxis(t, *a.x)
+		}
 	}
 	for _, k := range slices.Sorted(maps.Keys(ignored)) {
 		warnings = append(warnings, fmt.Sprintf("%d %s elements ignored", ignored[k], k))
@@ -228,6 +297,16 @@ func (r *robject) object(prec int, cats map[int]bool, defaultLE bool) (*model.Ob
 		return nil, nil, fmt.Errorf("cell address %q", z.Data.Address)
 	}
 	o.Address, o.Data = model.Addr(addr), z.Data.data(defaultLE)
+	if b := o.Data.Bits; b != 8 && b != 16 && b != 32 {
+		warnings = append(warnings, fmt.Sprintf("cells are %d bits wide; only 8, 16 and 32 can be kept", b))
+	}
+	if f, _ := parseHex(z.Data.TypeFlags); f&flagColMajor != 0 && o.Rows > 1 && o.Cols > 1 {
+		warnings = append(warnings, "cells are stored column by column (type flag 0x04); read row by row")
+	}
+	if z.Data.spaced(o.Data.Bits) {
+		warnings = append(warnings, fmt.Sprintf("cells are %d bits wide but spaced %d (major) and %d (minor) bits apart; read as packed",
+			o.Data.Bits, z.Data.MajorStrideBits, z.Data.MinorStrideBits))
+	}
 	o.Value, o.View, err = z.value(prec)
 	if err != nil {
 		warnings = append(warnings, err.Error())
@@ -260,6 +339,10 @@ func (r *robject) axis(id string, prec int, defaultLE bool) (*model.Axis, error)
 		if a.IndexCount <= 1 {
 			return nil, err
 		}
+		if vals, d, c, ok := a.fixed(); ok {
+			x.Source, x.Data, x.Values = "editable", &d, vals
+			x.Value.Conversion = c
+		}
 		return x, err
 	}
 	addr, aerr := parseHex(a.Data.Address)
@@ -268,7 +351,99 @@ func (r *robject) axis(id string, prec int, defaultLE bool) (*model.Axis, error)
 	}
 	ad, d := model.Addr(addr), a.Data.data(defaultLE)
 	x.Source, x.Stored, x.Address, x.Data = "image", "absolute", &ad, &d
+	if err == nil && a.Data.spaced(d.Bits) {
+		err = fmt.Errorf("points are %d bits wide but spaced %d bits apart; read as packed", d.Bits, a.Data.MajorStrideBits)
+	}
 	return x, err
+}
+
+// flagColMajor is the EMBEDDEDDATA type flag for cells stored column by column.
+const flagColMajor = 0x04
+
+// spaced reports cells that are not packed: a stride other than the cell
+// width. The writer's own label axes carry a negative stride, which is none.
+func (e embedded) spaced(bits int) bool {
+	return e.MajorStrideBits > 0 && e.MajorStrideBits != bits || e.MinorStrideBits > 0 && e.MinorStrideBits != bits
+}
+
+// link is the uniqueid of the table an axis takes its points from, for an
+// axis with no address of its own.
+func (r *robject) link(id string) string {
+	i := slices.IndexFunc(r.Axes, func(a raxis) bool { return a.ID == id })
+	if i < 0 {
+		return ""
+	}
+	a := &r.Axes[i]
+	if a.Data.Address != "" || a.EmbedInfo == nil || a.EmbedInfo.Type != 3 {
+		return ""
+	}
+	return strings.TrimSpace(a.EmbedInfo.LinkID)
+}
+
+// linkedAxis is the axis whose points are table t's cells. The axis's own
+// units, when it has any, stay.
+func linkedAxis(t *model.Object, cur *model.Axis) *model.Axis {
+	addr, d := t.Address, t.Data
+	x := &model.Axis{Source: "image", Stored: "absolute", Address: &addr, Data: &d, Value: t.Value, View: t.View}
+	x.Value.Min, x.Value.Max = nil, nil
+	if cur != nil && cur.Value.Units != "" {
+		x.Value.Units = cur.Value.Units
+	}
+	return x
+}
+
+// fixed returns an axis's labels as fixed axis points: the values, with the
+// storage and conversion that hold them exactly in a KP (whole numbers of
+// 10^-digits). It reports false for labels that are not all numbers, that
+// only count from 0, or that are all the same, which say nothing.
+func (a *raxis) fixed() (vals []float64, d model.Data, c model.Conversion, ok bool) {
+	if len(a.Labels) < 2 || len(a.Labels) != a.IndexCount {
+		return nil, d, c, false
+	}
+	vals = make([]float64, len(a.Labels))
+	for _, l := range a.Labels {
+		f, err := strconv.ParseFloat(strings.TrimSpace(l.Value), 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || l.Index < 0 || l.Index >= len(vals) {
+			return nil, d, c, false
+		}
+		vals[l.Index] = f
+	}
+	counts, same := true, true
+	for i, v := range vals {
+		counts = counts && v == float64(i)
+		same = same && v == vals[0]
+	}
+	if counts || same {
+		return nil, d, c, false
+	}
+	scale := 1.0
+	whole := func() bool {
+		for _, v := range vals {
+			if r := v * scale; math.Abs(r-math.Round(r)) > 1e-6 {
+				return false
+			}
+		}
+		return true
+	}
+	for digits := 0; digits < 6 && !whole(); digits++ {
+		scale *= 10
+	}
+	lo, hi := math.Inf(1), math.Inf(-1)
+	for _, v := range vals {
+		r := math.Round(v * scale)
+		lo, hi = math.Min(lo, r), math.Max(hi, r)
+	}
+	switch {
+	case lo >= 0 && hi <= math.MaxUint16:
+		d = model.Data{Bits: 16, Endian: "little"}
+	case lo >= math.MinInt16 && hi <= math.MaxInt16:
+		d = model.Data{Bits: 16, Endian: "little", Signed: true}
+	case lo >= math.MinInt32 && hi <= math.MaxInt32:
+		d = model.Data{Bits: 32, Endian: "little", Signed: true}
+	default:
+		return nil, d, c, false
+	}
+	return vals, d, model.Conversion{Factor: 1 / scale}, true
 }
 
 // value reads the units, decimal places (default prec), output type (3 is
@@ -278,9 +453,9 @@ func (a *raxis) value(prec int) (model.Value, model.View, error) {
 	if a.DecimalPl != nil {
 		prec = *a.DecimalPl
 	}
-	c, err := parseEquation(a.Math.Equation)
+	c, err := parseEquation(a.equation())
 	if err != nil {
-		c, err = model.Conversion{Factor: 1}, fmt.Errorf("equation %q: %v; read as X", a.Math.Equation, err)
+		c, err = model.Conversion{Factor: 1}, fmt.Errorf("equation %q: %v; read as X", a.equation(), err)
 	}
 	v := model.View{Base: 10}
 	if strings.TrimSpace(a.OutputType) == "3" {

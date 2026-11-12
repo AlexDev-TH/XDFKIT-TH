@@ -44,9 +44,10 @@ type eqParser struct {
 	i int
 }
 
-// peek returns the next non-space byte, 0 at the end.
+// peek returns the next byte that isn't white space, 0 at the end. TunerPro
+// keeps a line break typed into the equation box.
 func (p *eqParser) peek() byte {
-	for p.i < len(p.s) && p.s[p.i] == ' ' {
+	for p.i < len(p.s) && strings.IndexByte(" \t\r\n", p.s[p.i]) >= 0 {
 		p.i++
 	}
 	if p.i == len(p.s) {

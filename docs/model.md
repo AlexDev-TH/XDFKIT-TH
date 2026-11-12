@@ -7,7 +7,7 @@ The format-neutral model every reader converts into and every writer converts ou
 - Schema: generated from Go types in `model/` (`json`, `doc`, `enum`, `pattern` tags) as `model/schema.json` (draft 2020-12). `make schema` rewrites it; tests fail on drift and validate every ecuxplot pack's model against it.
 - Scope: schema 1 holds what the readers emit. Axes, conversions and record layouts are inlined. Shared lists and image identity are not in schema 1. It grows by optional fields; a breaking change bumps the version. `format-matrix.md` lists schema 1 next to the target.
 - Addresses: hex strings `"0x13D52"` (uppercase on write, either case on read, at most 8 digits).
-- Object `key` is the source id. A blank id leaves the key blank; repeated keys are allowed. Source id stays in `id`. XDF title holds the first word of `id`; the metadata file restores `key` and the full `id` (`stamp-and-metadata.md`).
+- Object `key` is the source id. A blank id leaves the key blank; repeated keys are allowed. Source id stays in `id`. XDF title holds the whole `id`; the metadata file restores `key` (`stamp-and-metadata.md`).
 - JSON is canonical stamped form (`stamp-and-metadata.md`).
 
 ## Document

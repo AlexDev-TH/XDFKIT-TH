@@ -24,7 +24,7 @@ import (
 	"go.nyet.org/xdfkit/model"
 )
 
-// maxDigits is the most digits TunerPro shows.
+// maxDigits is the most decimal places written.
 const maxDigits = 6
 
 // minOffset is the smallest conversion offset written: smaller ones can't
@@ -138,6 +138,7 @@ type embedded struct {
 	RowCount        int    `xml:"mmedrowcount,attr,omitempty"`
 	ColCount        int    `xml:"mmedcolcount,attr,omitempty"`
 	MajorStrideBits int    `xml:"mmedmajorstridebits,attr,omitempty"`
+	MinorStrideBits int    `xml:"mmedminorstridebits,attr,omitempty"`
 }
 
 // embedInfo is type 1 for axis points read from the image, or type 3 with the
@@ -164,6 +165,7 @@ type label struct {
 type equation struct {
 	Equation string `xml:"equation,attr"`
 	Row      string `xml:"row,attr,omitempty"`
+	Col      string `xml:"col,attr,omitempty"`
 	Var      struct {
 		ID string `xml:"id,attr"`
 	} `xml:"VAR"`
@@ -468,13 +470,15 @@ func linkable(t *model.Object, x *model.Axis, n int) bool {
 		math.Abs(c.Offset-d.Offset) < minOffset
 }
 
-// text is the XDF title and description of o: the first word of its id and
-// its description plus comment, or without an id, its description and comment.
+// text is the XDF title and description of o: its id and its description plus
+// comment, or without an id, its description and comment. The title is the
+// whole id: a TunerPro title is words, and cutting it at the first space
+// (as was done for KP ids) left "Ignition Map Gear 1" as "Ignition".
 func text(o *model.Object) (title, desc string) {
 	if o.ID == "" {
 		return trim(o.Description), trim(o.Comment)
 	}
-	title, _, _ = strings.Cut(o.ID, " ")
+	title = o.ID
 	desc = trim(o.Description)
 	if c := trim(o.Comment); c != "" {
 		desc += "\n" + c
@@ -555,6 +559,10 @@ func axisPoints(id string, x *model.Axis, size int, image []byte, static bool) (
 			vals[i] = c.Apply(raw[i])
 		case x != nil && i < len(x.Values):
 			vals[i] = x.Values[i] // already display units
+		case x != nil && x.Source == "editable" && len(x.Values) > 0:
+			// A fixed list shorter than the axis ends in zeros: a KP holds
+			// them as padding and its reader leaves them off.
+			vals[i] = 0
 		default:
 			vals[i] = c.Apply(float64(i))
 		}
@@ -793,28 +801,13 @@ func floatEqOK(c model.Conversion) error {
 		c.Factor, c.Offset, c.Reciprocal)
 }
 
-// limitPrecision cuts the decimal places so that the largest value of the
-// type has at most maxDigits digits. It uses a Java-style 32-bit int shift, so
-// 32-bit unsigned cells (and axes without storage, width 0) are measured at
-// raw 0.
+// limitPrecision is the decimal places written for v: the definition's own,
+// up to maxDigits. They used to be cut so that the largest value the cell
+// type can hold fit in maxDigits digits in all, which showed a 16-bit value
+// with factor 0.25 and three decimals to one decimal, rounding .25 and .75
+// away whatever the cell actually held.
 func limitPrecision(v model.Value, bits int, signed bool) int {
-	width := bits
-	if signed {
-		width--
-	}
-	raw := float64(int32(1)<<(uint(width)&31) - 1)
-	if v.Conversion.Reciprocal {
-		raw = 1
-	}
-	intDigits := javaInt(math.Floor(math.Log10(v.Conversion.Apply(raw))) + 1)
-	prec := v.Precision
-	if int64(prec)+int64(intDigits) > maxDigits {
-		prec = 0
-		if maxDigits > intDigits {
-			prec = maxDigits - int(intDigits)
-		}
-	}
-	return prec
+	return min(max(v.Precision, 0), maxDigits)
 }
 
 // javaInt converts as Java's (int) cast: NaN is 0, out of range saturates.
