@@ -38,7 +38,6 @@ const engineRules: [RegExp, Key][] = [
   [/^\d+ (XDF[A-Z]+) elements? ignored$/, 'engine.ignored'],
   [/^\[\[kp-layout\]\] (\d+)$/, 'engine.stride'],
   [/^\[\[kp-header\]\] (\d+)$/, 'engine.strideOld'],
-  [/^\[\[kp-data\]\] (\d+)$/, 'engine.kpData'],
   [/cells start at bit \d+/, 'engine.colMajor'],
   [/only 8, 16 and 32 can be kept/, 'engine.bits'],
   [/is missing or of another size; its labels are used/, 'engine.linkMissing'],

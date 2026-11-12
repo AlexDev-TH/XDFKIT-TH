@@ -177,77 +177,38 @@ func TestSpacedThroughXDF(t *testing.T) {
 	}
 }
 
-// TestSkipBytesInLaterPack: with a pack of a later WinOLS as the template, the
-// KP holds the skip bytes of map cells too, and they read back as the strides
-// they came from.
-func TestSkipBytesInLaterPack(t *testing.T) {
+// TestLaterPackNotATemplate: a pack saved by WinOLS 5 is turned down as the
+// template, with nothing written: WinOLS does not open such a pack once its
+// maps are replaced (kp.HeaderSealed; WinOLS 5.87 reports the file as corrupt).
+func TestLaterPackNotATemplate(t *testing.T) {
 	a := NewApp()
 	dir := t.TempDir()
-	m, img := spacedModel()
-	// A table whose rows each end in two bytes that are not cells.
-	copy(img[0x20:], []byte{1, 2, 3, 0xEE, 0xEE, 4, 5, 6, 0xEE, 0xEE})
-	m.Objects = append(m.Objects, &model.Object{
-		ID: "Rows", Shape: "2d", Address: 0x20, Rows: 2, Cols: 3,
-		Data:  model.Data{Bits: 8, MinorStride: 24},
-		Value: model.Value{Conversion: model.Conversion{Factor: 1}},
-	})
+	m, _ := spacedModel()
 	doc, err := canon.MarshalStamped(m, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	src, bin := filepath.Join(dir, "spaced.json"), filepath.Join(dir, "spaced.bin")
+	src := filepath.Join(dir, "spaced.json")
 	if err := os.WriteFile(src, doc, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(bin, img, 0o644); err != nil {
-		t.Fatal(err)
-	}
 	k := a.Convert(ConvertJob{Input: src, To: api.KP, Template: filepath.Join("..", "testdata", "kp", "503-fewmaps.kp")})
-	if k.Error != "" {
-		t.Fatal(k.Error)
+	if !strings.HasPrefix(k.Error, "[[template-sealed]]") {
+		t.Fatalf("error %q, want the template turned down", k.Error)
 	}
-	for _, w := range k.Warnings {
-		if strings.HasPrefix(w, "[[kp-header]]") || strings.HasPrefix(w, "[[kp-layout]]") {
-			t.Errorf("warning %q with a header 503 template", w)
-		}
+	if _, err := os.Stat(filepath.Join(dir, "spaced.kp")); !os.IsNotExist(err) {
+		t.Errorf("a file was written: %v", err)
+	}
+	// A pack of the older format is a template as before.
+	k = a.Convert(ConvertJob{Input: src, To: api.KP, Template: filepath.Join("..", "testdata", "kp", "v2-fewmaps.kp")})
+	if k.Error != "" {
+		t.Fatalf("header 292 template: %s", k.Error)
 	}
 	f, err := kp.Parse(read(t, k.Output))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.HeaderID != 503 || len(f.Project.Maps) != 3 {
-		t.Fatalf("header %d, %d maps", f.HeaderID, len(f.Project.Maps))
-	}
-	if p := f.Project.Maps[0]; p.SkipBytes != 1 || p.X.SkipBytes != 1 || p.End != 0x11+8 {
-		t.Errorf("paired curve: map skip %d, axis skip %d, end %#x", p.SkipBytes, p.X.SkipBytes, p.End)
-	}
-	if r := f.Project.Maps[2]; r.SkipBytes != 0 || r.LineSkipBytes != 2 || r.End != 0x20+10 {
-		t.Errorf("padded rows: skip %d, line skip %d, end %#x", r.SkipBytes, r.LineSkipBytes, r.End)
-	}
-	d, err := a.loadDef(k.Output)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := d.model.Objects[0].Data; got.MajorStride != 16 {
-		t.Errorf("paired values read back as %+v", got)
-	}
-	if got := d.model.Objects[2].Data; got.MinorStride != 24 || got.MajorStride != 0 {
-		t.Errorf("padded rows read back as %+v", got)
-	}
-	for i, want := range [][][]float64{{{10, 20, 30, 40}}, {{1, 3, 5}, {2, 4, 6}}, {{1, 2, 3}, {4, 5, 6}}} {
-		v, err := a.MapDetail(k.Output, i, bin)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got := cellRows(v)
-		if len(got) != len(want) {
-			t.Errorf("object %d: %v, want %v", i, got, want)
-			continue
-		}
-		for r := range want {
-			if !slices.Equal(got[r], want[r]) {
-				t.Errorf("object %d row %d: %v, want %v", i, r, got[r], want[r])
-			}
-		}
+	if f.HeaderID != 292 || len(f.Project.Maps) != 2 {
+		t.Errorf("header %d, %d maps", f.HeaderID, len(f.Project.Maps))
 	}
 }

@@ -24,7 +24,7 @@ import (
 )
 
 // AppVersion is the desktop app's own version; the engine reports api.Version.
-var AppVersion = "0.3.0"
+var AppVersion = "0.3.1"
 
 // maxFile is the largest file the app reads: definitions and flash images
 // are far smaller, so anything bigger was picked by mistake.
@@ -623,6 +623,10 @@ func (a *App) Convert(job ConvertJob) ConvertResult {
 		if req.Template, err = readOptional(job.Template); err != nil {
 			return fail(err)
 		}
+		// A pack of a later WinOLS cannot be written with other maps.
+		if f, err := kp.Parse(req.Template); len(req.Template) > 0 && err == nil && f.HeaderID >= kp.HeaderSealed {
+			return fail(appError{"template-sealed", job.Template})
+		}
 	}
 	if from == api.XDF {
 		_, _, req.Meta = siblingMeta(job.Input)
@@ -948,15 +952,12 @@ func convertViaModel(data []byte, req api.ConvertRequest, from string, tunerPro 
 		return nil, nil, warnings, err
 	}
 	if req.To == api.KP {
-		// A KP states gaps between cells by skip bytes, and only a pack of a
-		// later WinOLS has them for the cells of a map: the pack takes its
-		// format from the template.
+		// A KP states gaps between cells by skip bytes. A pack of the format
+		// written here has them for axis points, not for the cells of a map.
+		// The pack takes its format from the template.
 		header := int32(model.KPDefaultHeader)
 		if f, err := kp.Parse(req.Template); len(req.Template) > 0 && err == nil {
 			header = f.HeaderID
-			if f.DataSize > 0 {
-				warnings = append(warnings, fmt.Sprintf("[[kp-data]] %d", f.DataSize))
-			}
 		}
 		noForm, tooOld := m.KPLayoutLost(header)
 		if noForm > 0 {
@@ -965,6 +966,9 @@ func convertViaModel(data []byte, req api.ConvertRequest, from string, tunerPro 
 		if tooOld > 0 {
 			warnings = append(warnings, fmt.Sprintf("[[kp-header]] %d", tooOld))
 		}
+	}
+	if req.To == api.KP && !fromKP(m) {
+		kpFolders(m)
 	}
 	switch {
 	case req.To == api.KP && tunerPro:

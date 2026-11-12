@@ -114,3 +114,56 @@ func unlistTitles(m *model.Model) {
 		}
 	}
 }
+
+// Folders between TunerPro and WinOLS.
+//
+// A TunerPro table can sit in several categories; a WinOLS map sits in one
+// folder. Every pack WinOLS saves keeps folder 0 for "My maps" and folder 1
+// for "Hexdump", and numbers the folders the user made from 2. A definition
+// that did not come from a KP numbers its categories from 0, so written as
+// they are its first two categories would become those two folders, and a
+// table with a category shared by every table in front (a maker's name, say)
+// would land in that one folder with all the others.
+
+// fromKP reports a model whose categories are the folders of a KP.
+func fromKP(m *model.Model) bool {
+	return m.Provenance != nil && m.Provenance.Format == "kp"
+}
+
+// kpFolders arranges the categories of a model that did not come from a KP
+// for a KP: each object's narrowest category, the one the fewest objects are
+// in, comes first, since that is the folder the map goes in; and the
+// categories are numbered from 2, after "My maps" and "Hexdump".
+func kpFolders(m *model.Model) {
+	members := map[int]int{}
+	for _, o := range m.Objects {
+		for _, c := range o.Categories {
+			members[c]++
+		}
+	}
+	ids := map[int]int{}
+	cats := []*model.Category{{ID: 0, Name: "My maps"}, {ID: 1, Name: "Hexdump"}}
+	for i, c := range m.Categories {
+		ids[c.ID] = i + 2
+		cats = append(cats, &model.Category{ID: i + 2, Name: c.Name})
+	}
+	for _, o := range m.Objects {
+		if len(o.Categories) == 0 {
+			continue
+		}
+		list := make([]int, len(o.Categories))
+		copy(list, o.Categories)
+		narrow := 0
+		for i, c := range list {
+			if members[c] < members[list[narrow]] {
+				narrow = i
+			}
+		}
+		list[0], list[narrow] = list[narrow], list[0]
+		for i, c := range list {
+			list[i] = ids[c]
+		}
+		o.Categories = list
+	}
+	m.Categories = cats
+}

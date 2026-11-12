@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -138,5 +139,57 @@ func TestTunerProXDF(t *testing.T) {
 	checkTunerProTables(t, bd.model, "XDF from KP")
 	if got := objectNamed(t, bd.model, "Ignition Map Gear 1"); got.Description != help {
 		t.Errorf("XDF from KP: help text %q, want %q", got.Description, help)
+	}
+}
+
+// TestFoldersForKP: a definition that is not from a KP gets WinOLS's own
+// folders 0 and 1, its categories from 2, and each map in its narrowest
+// category; a model read from a KP keeps its folders.
+func TestFoldersForKP(t *testing.T) {
+	one := model.Conversion{Factor: 1}
+	obj := func(id string, addr model.Addr, cats ...int) *model.Object {
+		return &model.Object{ID: id, Shape: "value", Address: addr, Rows: 1, Cols: 1, Categories: cats,
+			Data: model.Data{Bits: 8}, Value: model.Value{Conversion: one}}
+	}
+	m := &model.Model{
+		Schema:     model.SchemaID,
+		Provenance: &model.Provenance{Format: "xdf"},
+		Categories: []*model.Category{{ID: 0, Name: "Maker"}, {ID: 1, Name: "Fuel"}, {ID: 2, Name: "Ignition"}},
+		Objects: []*model.Object{
+			obj("A", 0x10, 0, 1), obj("B", 0x11, 0, 2), obj("C", 0x12, 0, 2), obj("D", 0x13, 0), obj("E", 0x14),
+		},
+	}
+	m.AssignKeys()
+	kpFolders(m)
+	var names []string
+	for _, c := range m.Categories {
+		names = append(names, fmt.Sprintf("%d %s", c.ID, c.Name))
+	}
+	if want := []string{"0 My maps", "1 Hexdump", "2 Maker", "3 Fuel", "4 Ignition"}; !slices.Equal(names, want) {
+		t.Errorf("categories %v, want %v", names, want)
+	}
+	for i, want := range [][]int{{3, 2}, {4, 2}, {4, 2}, {2}, nil} {
+		if got := m.Objects[i].Categories; !slices.Equal(got, want) {
+			t.Errorf("object %s in %v, want %v", m.Objects[i].ID, got, want)
+		}
+	}
+	f, err := m.KP(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []int32{3, 4, 4, 2, 0} {
+		if got := f.Project.Maps[i].FolderID; got != want {
+			t.Errorf("map %s in folder %d, want %d", f.Project.Maps[i].ID, got, want)
+		}
+	}
+	builtIn := map[int32]int32{}
+	for _, fd := range f.Project.Folders {
+		builtIn[fd.ID] = fd.BuiltIn
+	}
+	if builtIn[0] != 9000 || builtIn[1] != 9001 || builtIn[2] != 0 || builtIn[3] != 0 || len(builtIn) != 5 {
+		t.Errorf("folders and their built-in marks: %v", builtIn)
+	}
+	if !fromKP(&model.Model{Provenance: &model.Provenance{Format: "kp"}}) || fromKP(m) || fromKP(&model.Model{}) {
+		t.Error("fromKP")
 	}
 }

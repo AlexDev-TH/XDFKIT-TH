@@ -64,14 +64,17 @@ WinOLS แสดงรายการแมพด้วยชื่อเต็�
 
 ไฟล์ KP อ่านแล้วเขียนกลับได้ไบต์เดิม ตรวจกับไฟล์งานจริง 257 ไฟล์ ทั้งรูปแบบเดิม (เฮดเดอร์ 292) และรูปแบบของ WinOLS 5 (เฮดเดอร์ 503)
 
+ไฟล์ KP ที่โปรแกรมเขียนจาก XDF ทดสอบนำเข้าใน WinOLS 5.87 แล้ว แมพเข้าครบ ชื่อภาษาไทยแสดงถูกต้อง และแมพอยู่ในโฟลเดอร์ตามหมวด
+
 ### สิ่งที่ควรรู้
 
 - ไฟล์ต้นฉบับจะไม่ถูกเขียนทับ ถ้าปลายทางมีไฟล์ชื่อเดียวกันอยู่ โปรแกรมจะหยุดจนกว่าจะเปิดตัวเลือก "เขียนทับไฟล์ที่มีอยู่"
 - แปลงเป็น XDF จะได้ไฟล์ `.meta.json` คู่กันมาด้วย เก็บไว้ข้างไฟล์ XDF จะแปลงกลับเป็น KP ได้เหมือนเดิม
 - ไฟล์ KP อ่านได้ตั้งแต่เฮดเดอร์ 113, 116, 245, 292 จนถึง 503 และ 597 ของ WinOLS 5 ถ้าเจอรุ่นที่ยังอ่านไม่ได้ โปรแกรมจะแจ้งข้อความจากเอนจินให้เห็นตรง ๆ
 - ไบต์เว้น (Skip bytes) ของ WinOLS อ่านจาก KP ได้ทั้งของแกนและของตาราง แล้วไปเป็นระยะเว้น (stride) ใน XDF ให้ TunerPro อ่านค่าตำแหน่งเดียวกัน
-- เมื่อแปลงเป็น KP ไบต์เว้นของแกนเก็บได้เสมอ ส่วนไบต์เว้นของตาราง KP รูปแบบเดิมไม่มีที่เก็บ ต้องเลือกไฟล์ KP ที่บันทึกจาก WinOLS 5 เป็น "ไฟล์ KP ต้นแบบ" ไฟล์ที่ได้จะเป็นรูปแบบของ WinOLS 5 และเก็บไบต์เว้นครบ ถ้าไม่เลือก โปรแกรมจะบอกจำนวนตารางที่ได้รับผล
-- ไฟล์ KP ที่บันทึกจาก WinOLS 5 มีข้อมูลไฟล์ ECU ติดอยู่ท้ายไฟล์ เมื่อใช้เป็นไฟล์ต้นแบบ ข้อมูลนั้นจะติดไปกับไฟล์ที่แปลงได้ และโปรแกรมจะแจ้งให้ทราบ
+- เมื่อแปลงเป็น KP ไบต์เว้นของแกนเก็บได้เสมอ ส่วนไบต์เว้นของตารางเก็บไม่ได้ เพราะ KP รูปแบบที่โปรแกรมเขียน (เฮดเดอร์ 292) ไม่มีฟิลด์นี้ โปรแกรมจะบอกจำนวนตารางที่ได้รับผล ตารางเหล่านั้นต้องตั้งค่า Skip bytes ใน WinOLS เอง
+- ไฟล์ KP ที่บันทึกจาก WinOLS 5 อ่านและแปลงเป็นรูปแบบอื่นได้ แต่ใช้เป็น "ไฟล์ KP ต้นแบบ" ไม่ได้ และโปรแกรมไม่เขียน KP รูปแบบนี้ เพราะ WinOLS เข้ารหัสส่วนท้ายของไฟล์โดยผูกกับตำแหน่งในไฟล์ เมื่อเปลี่ยนแมพข้างใน WinOLS จะแจ้งว่าไฟล์เสีย (ทดสอบกับ WinOLS 5.87)
+- KP เก็บแมพได้โฟลเดอร์เดียว ตาราง XDF ที่อยู่หลายหมวดจะเข้าโฟลเดอร์ของหมวดที่เจาะจงที่สุด คือหมวดที่มีตารางน้อยที่สุด ส่วนโฟลเดอร์ "My maps" และ "Hexdump" ของ WinOLS ถูกเว้นไว้ตามที่ WinOLS ใช้
 - ตารางที่เรียงเซลล์ย้อนกลับ หรือระยะท้ายแถวสั้นกว่าระยะระหว่างเซลล์ WinOLS ไม่มีรูปแบบรองรับ เมื่อแปลงเป็น KP โปรแกรมจะบอกจำนวนตารางที่ได้รับผล
 - แมพแบบ 2D Inverse ของ KP แสดงและแปลงเป็น XDF ตามที่ WinOLS แสดง คือแต่ละแถวที่เก็บในไฟล์เป็นหนึ่งคอลัมน์ และแกน X กับแกน Y มีจำนวนจุดตรงกับตาราง ส่วนตาราง XDF ที่เรียงตามคอลัมน์จะเป็นแมพ 2D Inverse ใน KP
 - ตาราง XDF ที่ใช้เซลล์ 1 บิตหรือเริ่มกลางไบต์ยังอ่านไม่ได้ โปรแกรมจะเตือนเป็นรายตาราง
@@ -132,10 +135,10 @@ go test ./...          # ส่วนเชื่อมหน้าต่าง�
 ส่วน KP
 
 - ไบต์เว้นของแกน อ่านและเขียนได้ เดิมไม่ถูกอ่าน แกนที่มีไบต์เว้นจึงได้ค่าผิดเมื่อแปลงเป็น XDF
-- ไบต์เว้นและไบต์เว้นท้ายแถวของตาราง อ่านได้จากไฟล์ของ WinOLS 5 และเขียนได้เมื่อไฟล์ต้นแบบเป็นรูปแบบนั้น
+- ไบต์เว้นและไบต์เว้นท้ายแถวของตาราง อ่านได้จากไฟล์ของ WinOLS 5
 - แมพแบบ 2D Inverse เขียนเป็นตาราง XDF ที่เรียงตามคอลัมน์ เดิมเขียนตามลำดับที่เก็บ ทำให้แกน X และแกน Y มีจำนวนจุดสลับกัน
 - แฟล็กค่าผกผัน (Reciprocal) ของแกน อ่านจากไบต์ที่ถูกต้อง เดิมไฟล์ที่มีแกนแบบนี้อ่านไม่ได้
-- ไฟล์ของ WinOLS 5 (เฮดเดอร์ 503 และ 597) เขียนกลับได้ เดิมอ่านได้อย่างเดียว และโฟลเดอร์ที่มีสถานะมากกว่าหนึ่งไบต์อ่านไม่ได้
+- ไฟล์ของ WinOLS 5 (เฮดเดอร์ 503 และ 597) อ่านได้ครบทุกไฟล์ที่ทดสอบ เดิมโฟลเดอร์ที่มีสถานะมากกว่าหนึ่งไบต์อ่านไม่ได้ ไฟล์รูปแบบนี้เขียนกลับได้เฉพาะเมื่อไม่ได้เปลี่ยนแมพและโฟลเดอร์
 - ข้อความ `-`, `?` และ `%` ในไฟล์ของ WinOLS 5 อ่านได้ตามจริง เดิมกลายเป็นข้อความว่าง
 - ตำแหน่งท้ายส่วนนิยามและขนาดข้อมูลไฟล์ ECU ในเฮดเดอร์ แยกเป็นสองฟิลด์ตามจริง
 - ตัวตรวจแกนไม่แตะแกนและแมพที่มีไบต์เว้น เพราะกติกาตรวจอ่านค่าแบบเรียงติดกัน
@@ -153,4 +156,4 @@ go test ./...          # ส่วนเชื่อมหน้าต่าง�
 
 XDFKIT-TH is a Windows desktop app for converting ECU map definitions between WinOLS KP, TunerPro XDF, A2L, DAMOS, JSON and YAML. It shows map values read from a flash image, checks and fixes KP axes, merges definitions, and reads and writes Thai text (Windows-874) in KP and XDF files. The interface is in Thai and English, with dark and light themes.
 
-It is built by AlexDev-TH on the [xdfkit](https://github.com/nyetlabs/xdfkit) engine by nyetlabs, with fixes to its XDF reader and writer (cell strides and column order as TunerPro places them, linked axes, fixed axis labels, table equations, whole titles, decimal places, several categories on one table) and to its KP reader and writer (record layouts taken from WinOLS's own serializer, skip bytes of axes and maps, 2D-inverse maps, WinOLS 5 packs written back), under the same licence, LGPL-3.0-or-later. Download `XDFKIT-TH.exe` from the Releases page, or build it with `app/build.ps1`.
+It is built by AlexDev-TH on the [xdfkit](https://github.com/nyetlabs/xdfkit) engine by nyetlabs, with fixes to its XDF reader and writer (cell strides and column order as TunerPro places them, linked axes, fixed axis labels, table equations, whole titles, decimal places, several categories on one table) and to its KP reader and writer (record layouts taken from WinOLS's own serializer, skip bytes of axes and maps, 2D-inverse maps, WinOLS 5 packs read in full), under the same licence, LGPL-3.0-or-later. Download `XDFKIT-TH.exe` from the Releases page, or build it with `app/build.ps1`.
