@@ -1,96 +1,103 @@
-# xdfkit
+![XDFKIT-TH](app/branding/banner.png)
 
-A command-line converter between ECU map definition formats: WinOLS map packs (KP), TunerPro XDF, JSON and YAML. It also finds and fixes common axis mistakes in KP files by checking them against the flash image.
+# XDFKIT-TH
 
-## Install
+โปรแกรมแปลงไฟล์นิยามแมพ ECU สำหรับคนไทย ใช้งานผ่านหน้าต่าง ไม่ต้องพิมพ์คำสั่ง
+แปลงไปมาได้ระหว่าง WinOLS KP, TunerPro XDF, A2L, DAMOS, JSON และ YAML
+พร้อมดูค่าแมพจริงจากไฟล์ BIN และตรวจแก้แกนของไฟล์ KP
 
-Download the archive for your system from the [releases page](https://github.com/nyetlabs/xdfkit/releases) and put `xdfkit` (`xdfkit.exe` on Windows) on your path. With Go installed:
+พัฒนาโดย **AlexDev-TH** ต่อยอดจากเอนจิน [xdfkit ของ nyetlabs](https://github.com/nyetlabs/xdfkit)
 
-```sh
-go install go.nyet.org/xdfkit/cmd/xdfkit@latest
+## ดาวน์โหลด
+
+ไปที่หน้า [Releases](../../releases) แล้วโหลด `XDFKIT-TH.exe` มาเปิดได้เลย ไม่ต้องติดตั้ง
+
+- ใช้ได้บน Windows 10 และ 11 แบบ 64 บิต
+- ต้องมี WebView2 Runtime ซึ่ง Windows 11 มีมาให้แล้ว
+- ไฟล์ยังไม่ได้เซ็นรับรอง ครั้งแรก Windows อาจขึ้นหน้าต่าง SmartScreen ให้กด "ข้อมูลเพิ่มเติม" แล้ว "เรียกใช้ต่อไป"
+
+## ทำอะไรได้บ้าง
+
+| หน้า | ใช้ทำอะไร |
+| --- | --- |
+| แปลงไฟล์ | ลากไฟล์นิยามแมพมาวาง เลือกรูปแบบปลายทาง แล้วกดแปลง แปลงทีละหลายไฟล์ได้ |
+| สำรวจแมพ | ดูรายการแมพทั้งหมด ค้นหา กรองตามชนิดและหมวด ดูค่าจริงจากไฟล์ BIN เป็นตารางไล่เฉดสี กราฟ และพื้นผิว 3 มิติ |
+| ตรวจ & แก้ KP | เทียบไฟล์ KP กับไฟล์ BIN หาแกนที่ตั้งค่าผิด แล้วเขียนไฟล์ที่แก้แล้วเป็นไฟล์ใหม่ |
+| รวมไฟล์ | รวมไฟล์นิยามสองไฟล์เข้าด้วยกันโดยจับคู่จากชื่อแมพ ดูผลก่อนได้ |
+| ตรวจ Stamp | ตรวจว่าไฟล์ JSON หรือ YAML ถูกแก้ด้วยมือหลังจากโปรแกรมเขียนหรือไม่ |
+
+ตัวโปรแกรมสลับภาษาไทยกับอังกฤษได้ มีธีมมืด ธีมสว่าง และตามระบบ
+
+### รูปแบบไฟล์
+
+| รูปแบบ | อ่าน | เขียน |
+| --- | --- | --- |
+| WinOLS KP | ได้ | ได้ |
+| TunerPro XDF | ได้ | ได้ |
+| A2L | ได้ | |
+| DAMOS (.dam) | ได้ | |
+| JSON, YAML | ได้ | ได้ |
+| CSV รายการแมพ | | ได้ |
+
+### ข้อความภาษาไทยในไฟล์ KP และ XDF
+
+WinOLS และ TunerPro บน Windows ภาษาไทยเก็บข้อความไทยเป็นรหัส Windows-874
+โปรแกรมนี้อ่านข้อความแบบนั้นออกมาเป็นภาษาไทยจริง และเขียนกลับในแบบเดียวกัน
+ชื่อแมพและคำอธิบายภาษาไทยจึงข้ามระหว่าง KP กับ XDF ได้ครบทุกตัวอักษร
+ส่วนไฟล์ JSON และ YAML จะได้ข้อความไทยแบบ UTF-8 ที่เปิดแก้ด้วยโปรแกรมแก้ข้อความทั่วไปได้
+
+ข้อความที่ไม่ใช่ภาษาไทยจะถูกส่งผ่านเอนจินตามเดิมโดยไม่แตะต้อง
+
+### สิ่งที่ควรรู้
+
+- ไฟล์ต้นฉบับจะไม่ถูกเขียนทับ ถ้าปลายทางมีไฟล์ชื่อเดียวกันอยู่ โปรแกรมจะหยุดจนกว่าจะเปิดตัวเลือก "เขียนทับไฟล์ที่มีอยู่"
+- แปลงเป็น XDF จะได้ไฟล์ `.meta.json` คู่กันมาด้วย เก็บไว้ข้างไฟล์ XDF จะแปลงกลับเป็น KP ได้เหมือนเดิม
+- ไฟล์ KP บางรุ่นเอนจินยังอ่านไม่ได้ โปรแกรมจะแจ้งข้อความจากเอนจินให้เห็นตรง ๆ
+- การตรวจแกน KP รองรับ ECU ตระกูล Bosch ME7 และ Motronic M3/M5 ตามที่เอนจินรองรับ
+
+## สร้างจากซอร์ส
+
+ต้องมี Go 1.26.4 ขึ้นไป, Node.js 20.19 ขึ้นไป และ Wails CLI รุ่น 2
+
+```powershell
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+cd app
+powershell -File build.ps1
 ```
 
-From a source checkout on macOS or Linux, this installs `xdfkit` and its quick converters to `/usr/local/lib/xdfkit`, linked from `/usr/local/bin` (`PREFIX`, `LIBDIR` and `BINDIR` change that; `sudo make uninstall` removes them):
+ได้ไฟล์ `app\build\bin\XDFKIT-TH.exe`
 
-```sh
-make build && sudo make install
+ทดสอบ
+
+```powershell
+go test ./...          # เอนจิน
+cd app
+go test ./...          # ส่วนเชื่อมหน้าต่างกับเอนจิน และข้อความภาษาไทย
 ```
 
-## Formats
+เทสต์ในโฟลเดอร์ `app` ต้องมีโฟลเดอร์ `app\frontend\dist` ซึ่งได้มาจากการ build หนึ่งครั้ง
 
-| Format | Read | Write | Notes |
-| --- | --- | --- | --- |
-| WinOLS KP | yes | yes | Converts back unchanged |
-| A2L | yes | | ASAM MCD-2 MC text |
-| DAMOS `.dam` | yes | | ASAP2DAM text |
-| TunerPro XDF | yes | yes | Converts back unchanged with its `.meta.json` |
-| JSON, YAML | yes | yes | Editable by hand; edits are detected |
-| CSV map list | | yes | For spreadsheets |
+## โครงสร้าง
 
-## Usage
+| โฟลเดอร์ | เนื้อหา |
+| --- | --- |
+| `app/` | โปรแกรมหน้าต่าง เขียนด้วย Go กับ Wails ส่วนหน้าจอเป็น React กับ TypeScript |
+| `app/branding/` | โลโก้ แบนเนอร์ และสคริปต์สร้างไอคอน |
+| `api/`, `kp/`, `xdf/`, `a2l/`, `dam/`, `model/`, `lint/`, `canon/`, `mapcsv/` | เอนจิน xdfkit ต้นฉบับ ไม่ได้แก้ไข |
+| `cmd/xdfkit/` | โปรแกรมบรรทัดคำสั่งของต้นฉบับ ยังใช้ได้ตามปกติ |
+| `docs/` | เอกสารของเอนจินต้นฉบับ ภาษาอังกฤษ |
 
-```sh
-xdfkit -f xdf -i image.bin in.kp out.xdf    # KP to XDF, plus out.meta.json
-xdfkit --template in.kp out.xdf back.kp     # XDF back to KP
-xdfkit lint -i image.bin in.kp              # report axis mistakes
-xdfkit fix -i image.bin -o fixed.kp in.kp   # fix them
-xdfkit merge --update golden.json located.json out.json
-xdfkit -f csv -i image.bin in.kp            # map list with value ranges
-xdfkit in.kp out.json                       # KP to JSON (or out.yaml)
-xdfkit verify out.json                      # has it been edited by hand?
-```
+## เครดิตและสัญญาอนุญาต
 
-Subtract axes in an XDF are live helper tables. `--static-axes` writes them as labels from the image, for TunerPro before 5.00.8414. The input format is detected from the file; the output format comes from `-f`, else the output file's extension. Existing files are not overwritten without `--force`. Options of one letter take one hyphen (`-f`), longer ones two (`--force`). `xdfkit -h` lists every option. `xdfkit merge` folds a second definition into the first: `--update` copies a corrected address and size and leaves conversions and labels in place (`docs/design.md`).
+- XDFKIT-TH โดย AlexDev-TH
+- เอนจิน xdfkit โดย nyetlabs
+- ฟอนต์ IBM Plex Sans Thai, IBM Plex Mono และ Kanit ใช้สัญญาอนุญาต SIL Open Font License
+- ไอคอนจาก Lucide ใช้สัญญาอนุญาต ISC
 
-### Quick converters
+เผยแพร่ภายใต้ LGPL-3.0-or-later เช่นเดียวกับต้นฉบับ ดูไฟล์ `COPYING.LESSER` และ `COPYING`
 
-`xdfkit kp2xdf FILE...` (and `xdf2kp`, `kp2json`, `xdf2json`, `json2kp`) converts each file named to the same name with the new extension, next to it. It never replaces an existing file and rejects input of another format. `kp2xdf` takes `-i image` (the flash image, as above) and `-m`, which also writes `.meta.json`; without it the XDF doesn't convert back exactly. Archives include them as commands of their own: links to `xdfkit`, or `.cmd` files on Windows.
+## English
 
-```sh
-kp2xdf *.kp       # a.kp -> a.xdf, b.kp -> b.xdf
-kp2xdf -m a.kp    # a.kp -> a.xdf, a.meta.json
-xdf2kp a.xdf      # a.xdf -> a.kp (reads a.meta.json if present)
-kp2json a.kp      # a.kp -> a.json
-xdf2json a.xdf    # a.xdf -> a.json (reads a.meta.json if present)
-json2kp a.json    # a.json -> a.kp (KP-only fields from defaults)
-```
+XDFKIT-TH is a Windows desktop app for converting ECU map definitions between WinOLS KP, TunerPro XDF, A2L, DAMOS, JSON and YAML. It shows map values read from a flash image, checks and fixes KP axes, merges definitions, and reads and writes Thai text (Windows-874) in KP and XDF files. The interface is in Thai and English, with dark and light themes.
 
-With `go install`, make the links yourself, for example `ln -s xdfkit kp2xdf` in the same directory.
-
-### Converting back
-
-Converting to another format and back gives the original definition. Keep `out.meta.json` next to `out.xdf`: it holds what XDF can't, and TunerPro ignores it. An XDF edited in TunerPro still converts back, and the edits are listed as warnings.
-
-```mermaid
-flowchart LR
-  kp["in.kp"] --> xdf["out.xdf +<br/>out.meta.json"]
-  tp["edit in TunerPro"] --> xdf
-  xdf --> kp2["back.kp"]
-  kp -. "--template" .-> kp2
-```
-
-## Fixing KP files
-
-`xdfkit lint` checks a KP file against the image it was made for and lists the problems. `xdfkit fix` writes a corrected copy, with only the fixes it is sure of.
-
-```mermaid
-flowchart LR
-  kp["in.kp + image.bin"] --> lint["xdfkit lint"]
-  lint --> list["list of problems"]
-  kp --> fix["xdfkit fix"]
-  fix --> out["fixed.kp"]
-```
-
-It finds:
-
-- Axes that show the wrong axis points in WinOLS. These are fixed.
-- Axes whose values make no sense, usually a wrong address or size. These are only listed.
-- Out-of-date map end addresses. These are fixed.
-
-## Status
-
-Under heavy development, aimed at a first usable release.
-
-## Licence
-
-LGPL-3.0-or-later. See `COPYING.LESSER` and `COPYING`. Developer notes: `DEVELOPER.md`.
+It is built by AlexDev-TH on the unmodified [xdfkit](https://github.com/nyetlabs/xdfkit) engine by nyetlabs, under the same licence, LGPL-3.0-or-later. Download `XDFKIT-TH.exe` from the Releases page, or build it with `app/build.ps1`.
