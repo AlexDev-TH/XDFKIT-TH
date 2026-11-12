@@ -35,6 +35,13 @@ const engineRules: [RegExp, Key][] = [
   [/^no image$/, 'engine.noImage'],
   [/^\[\[thai-lost\]\] (\d+)$/, 'engine.thaiLost'],
   [/^(\d+) XDFPATCH elements? ignored$/, 'engine.xdfPatch'],
+  [/^\d+ (XDF[A-Z]+) elements? ignored$/, 'engine.ignored'],
+  [/bits wide but spaced/, 'engine.stride'],
+  [/stored column by column/, 'engine.colMajor'],
+  [/only 8, 16 and 32 can be kept/, 'engine.bits'],
+  [/is missing or of another size; its labels are used/, 'engine.linkMissing'],
+  [/^BASEOFFSET /, 'engine.baseOffset'],
+  [/equation .*; read as X$/s, 'engine.equation'],
 ]
 
 export interface Message {

@@ -340,6 +340,8 @@ func axisPoints(x *model.Axis, n int, img []byte) (pts []float64, note string) {
 		for i := range n {
 			if x != nil && i < len(x.Values) {
 				pts[i] = x.Values[i] // already display units
+			} else if x != nil && x.Source == "editable" && len(x.Values) > 0 {
+				pts[i] = 0 // a fixed list shorter than the axis ends in zeros
 			} else {
 				pts[i] = c.Apply(float64(i))
 			}

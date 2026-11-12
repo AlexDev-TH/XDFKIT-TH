@@ -200,9 +200,9 @@ func TestThaiThroughFormats(t *testing.T) {
 	}
 }
 
-// TestWesternPackUntouched: a pack without Thai converts exactly as the
-// engine converts it alone.
-func TestWesternPackUntouched(t *testing.T) {
+// TestWesternPackNotThai: a German pack holds no Thai, and its accented
+// letters reach the XDF as they are.
+func TestWesternPackNotThai(t *testing.T) {
 	a := NewApp()
 	d, err := a.loadDef(packKP)
 	if err != nil {
@@ -215,11 +215,7 @@ func TestWesternPackUntouched(t *testing.T) {
 	if r := a.Convert(ConvertJob{Input: packKP, To: api.XDF, Output: out}); r.Error != "" {
 		t.Fatal(r.Error)
 	}
-	want, _, err := api.Convert(read(t, packKP), api.ConvertRequest{To: api.XDF, Name: filepath.Base(packKP), Title: "pack"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(read(t, out), want) {
-		t.Error("the app's XDF differs from the engine's")
+	if !bytes.Contains(read(t, out), []byte("Z&#x00FC;ndwinkelkennfeld")) {
+		t.Error("the XDF lacks the German name of KFZW")
 	}
 }

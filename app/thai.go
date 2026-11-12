@@ -1,6 +1,8 @@
 package main
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 
 	"go.nyet.org/xdfkit/api"
@@ -209,6 +211,10 @@ func eachText(m *model.Model, f func(*string)) {
 	}
 	f(&m.Project.Name)
 	f(&m.Project.Version)
+	if m.Provenance != nil {
+		// The name of the file the definition came from: a KP records it.
+		f(&m.Provenance.File)
+	}
 	for _, c := range m.Categories {
 		f(&c.Name)
 	}
@@ -283,4 +289,27 @@ func readableFindings(fs []lint.Finding, format string) {
 			ref.Name, _ = decodeThai(ref.Name, format)
 		}
 	}
+}
+
+var quoted = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
+
+// readableWarnings makes the names the engine quotes in its warnings
+// readable: a table title read from Windows-874 bytes is shown as Thai.
+func readableWarnings(ws []string, format string) []string {
+	if !byteText(format) {
+		return ws
+	}
+	for i, w := range ws {
+		ws[i] = quoted.ReplaceAllStringFunc(w, func(q string) string {
+			s, err := strconv.Unquote(q)
+			if err != nil {
+				return q
+			}
+			if t, ok := decodeThai(s, format); ok {
+				return `"` + t + `"`
+			}
+			return q
+		})
+	}
+	return ws
 }

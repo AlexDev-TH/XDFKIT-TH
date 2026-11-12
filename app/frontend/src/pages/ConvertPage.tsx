@@ -291,12 +291,30 @@ function Result({ r }: { r: ConvertResult }) {
       <div className="result-body">
         <div className="path">{dirName(r.output)}</div>
         {r.metaOutput && <div className="muted">+ {fileName(r.metaOutput)}</div>}
-        {(r.warnings ?? []).map((w, i) => {
-          const m = engineMessage(t, w)
-          return <div className="result-warn" key={i}><span>{m.text}{m.original && <span className="notice-original">{m.original}</span>}</span></div>
-        })}
+        <Warnings list={r.warnings ?? []} />
       </div>
     </div>
+  )
+}
+
+/** Warnings of one conversion; a long list shows its first few until asked for the rest. */
+function Warnings({ list }: { list: string[] }) {
+  const { t } = useApp()
+  const [all, setAll] = useState(false)
+  const few = 5
+  const shown = all ? list : list.slice(0, few)
+  return (
+    <>
+      {shown.map((w, i) => {
+        const m = engineMessage(t, w)
+        return <div className="result-warn" key={i}><span>{m.text}{m.original && <span className="notice-original">{m.original}</span>}</span></div>
+      })}
+      {list.length > few && (
+        <button type="button" className="btn small quiet" style={{ alignSelf: 'flex-start' }} onClick={() => setAll(!all)}>
+          {all ? t('common.less') : t('common.more', { n: list.length - few })}
+        </button>
+      )}
+    </>
   )
 }
 

@@ -292,6 +292,7 @@ export const en: Record<Key, string> = {
   'err.is-folder': 'That is a folder, not a file',
   'err.too-large': 'The file is too large',
   'err.no-stamp-format': 'Only JSON and YAML files carry a stamp',
+  'err.unreadable-definition': 'This is not a definition file in a readable format. Another program may have saved it in a format of its own',
 
   'engine.template': 'The template is not the file this model was read from',
   'engine.firstCategory': 'KP holds only the first category of each map',
@@ -303,4 +304,13 @@ export const en: Record<Key, string> = {
   'engine.noImage': 'No flash image',
   'engine.thaiLost': '{v} characters that the Thai set Windows-874 does not have were written as ?',
   'engine.xdfPatch': '{v} XDFPATCH elements were left out: the output format has no patches',
+  'engine.stride': 'This table stores its cells with gaps between them (a stride), which is not supported: its values and its converted form will be wrong',
+  'engine.colMajor': 'This table stores its cells column by column but is read row by row: its axes are swapped',
+  'engine.bits': 'This table has cells that are not 8, 16 or 32 bits wide (a 1 bit flag, for example), which cannot be kept as they are',
+  'engine.linkMissing': 'This axis is linked to a table that is missing or of another size, so its labels are used',
+  'engine.baseOffset': 'This file sets a BASEOFFSET that is not applied: addresses may be off',
+  'engine.equation': 'The formula of this table is not a straight line, so it cannot be kept as a factor and an offset. Its values are read as X',
+  'engine.ignored': '{v} elements were left out: the output format cannot hold them',
+  'common.more': '{n} more',
+  'common.less': 'Show fewer',
 }

@@ -147,6 +147,10 @@ func (a *App) loadDef(path string) (*loadedDef, error) {
 		return nil, err
 	}
 	d.thai = readThai(d.model, d.from)
+	if d.from == api.XDF {
+		unlistTitles(d.model)
+	}
+	d.warnings = readableWarnings(d.warnings, d.from)
 	a.mu.Lock()
 	if len(a.defs) >= 6 {
 		a.defs = map[string]*loadedDef{}
@@ -216,6 +220,8 @@ type FileInfo struct {
 	FamilySource string `json:"familySource,omitempty"`
 }
 
+var definitionExts = map[string]bool{".xdf": true, ".kp": true, ".a2l": true, ".dam": true, ".json": true}
+
 var imageExts = map[string]bool{".bin": true, ".ori": true, ".mod": true, ".rom": true, ".dat": true, ".org": true}
 
 // classify names what a file is. The engine detects definitions by content;
@@ -233,7 +239,15 @@ func classify(path string, data []byte) (kind, format string) {
 	if ext == ".yaml" || ext == ".yml" {
 		return "definition", api.YAML
 	}
-	if imageExts[ext] || looksBinary(data) {
+	if imageExts[ext] {
+		return "image", "bin"
+	}
+	if looksBinary(data) {
+		// A file named as a definition that isn't one of the readable formats
+		// (some programs save their own binary files as .xdf) is not an image.
+		if definitionExts[ext] {
+			return "unknown", ""
+		}
 		return "image", "bin"
 	}
 	return "definition", api.YAML
@@ -275,6 +289,8 @@ func (a *App) Inspect(path string) FileInfo {
 	}
 	info.Kind, info.Format = classify(path, data)
 	switch info.Kind {
+	case "unknown":
+		info.Error = appError{"unreadable-definition", path}.Error()
 	case "image":
 		sum := sha256.Sum256(data)
 		info.SHA256 = hex.EncodeToString(sum[:])
@@ -620,22 +636,19 @@ func (a *App) Convert(job ConvertJob) ConvertResult {
 			return fail(err)
 		}
 	}
-	// Thai text is carried through the model, readable in between (thai.go).
-	// Anything else takes the engine's own single step.
-	thai := false
-	if convertsModel {
-		if d, err := a.loadDef(job.Input); err == nil {
-			thai = d.thai > 0 || (job.To == api.KP || job.To == api.XDF) && modelHasThai(d.model)
-		}
-	}
+	// A model goes through the app between the engine's read and its write:
+	// Thai text is made readable (thai.go) and names are put where the output
+	// format's program shows them (names.go). A KP to a KP is re-encoded as it is.
+	tunerPro := from == api.XDF && req.Meta == nil
 	var out, meta []byte
-	if thai {
-		out, meta, res.Warnings, err = convertThai(data, req, from)
+	if convertsModel {
+		out, meta, res.Warnings, err = convertViaModel(data, req, from, tunerPro)
 	} else {
 		var resp api.ConvertResponse
 		out, resp, err = api.Convert(data, req)
 		meta, res.Warnings = resp.Meta, resp.Warnings
 	}
+	res.Warnings = readableWarnings(res.Warnings, from)
 	if err != nil {
 		return fail(err)
 	}
@@ -900,6 +913,9 @@ func engineModel(data []byte, req api.ConvertRequest, from string) (*model.Model
 		return nil, resp.Warnings, err
 	}
 	readThai(m, from)
+	if from == api.XDF {
+		unlistTitles(m)
+	}
 	return m, resp.Warnings, nil
 }
 
@@ -922,13 +938,22 @@ func writeDoc(m *model.Model, to string) (doc []byte, warnings []string, err err
 	return doc, warnings, err
 }
 
-// convertThai is api.Convert for a definition with Thai text: the engine
-// reads it, the text is made readable, and the engine writes the result from
-// that model.
-func convertThai(data []byte, req api.ConvertRequest, from string) (out, meta []byte, warnings []string, err error) {
+// convertViaModel is api.Convert in two steps: the engine reads the
+// definition, the app makes its Thai text readable and puts its names where
+// the output format keeps them, and the engine writes the result from that
+// model. tunerPro says the input is an XDF as TunerPro made it.
+func convertViaModel(data []byte, req api.ConvertRequest, from string, tunerPro bool) (out, meta []byte, warnings []string, err error) {
 	m, warnings, err := engineModel(data, api.ConvertRequest{Name: req.Name, Meta: req.Meta, Origin: req.Origin, Tuner: req.Tuner}, from)
 	if err != nil {
 		return nil, nil, warnings, err
+	}
+	switch {
+	case req.To == api.KP && tunerPro:
+		tunerProNames(m)
+	case req.To == api.XDF && boschNames(m):
+		listedTitles(m)
+	case req.To == api.XDF:
+		plainTitles(m)
 	}
 	doc, w, err := writeDoc(m, req.To)
 	warnings = append(warnings, w...)
