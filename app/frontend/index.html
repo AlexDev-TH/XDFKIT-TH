@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="dark">
+<head>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>XDFKIT-TH</title>
+    <script>
+      // The stored theme is applied before the first paint, so a light-theme
+      // start does not flash dark.
+      try {
+        var t = localStorage.getItem('xdfkit.theme') || 'dark';
+        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark';
+      } catch (e) {}
+    </script>
+</head>
+<body>
+<div id="root"></div>
+<script src="./src/main.tsx" type="module"></script>
+</body>
+</html>

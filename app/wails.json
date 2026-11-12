@@ -1,0 +1,19 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "XDFKIT-TH",
+  "outputfilename": "XDFKIT-TH",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "AlexDev-TH"
+  },
+  "info": {
+    "companyName": "AlexDev-TH",
+    "productName": "XDFKIT-TH",
+    "productVersion": "0.1.0",
+    "copyright": "LGPL-3.0-or-later. Based on xdfkit by nyetlabs.",
+    "comments": "ECU map definition converter: KP, XDF, A2L, DAMOS, JSON, YAML"
+  }
+}

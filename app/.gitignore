@@ -1,0 +1,7 @@
+build/bin
+build/README.md
+build/darwin
+build/windows/installer
+node_modules
+frontend/dist
+frontend/package.json.md5
