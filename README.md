@@ -65,7 +65,8 @@ WinOLS แสดงรายการแมพด้วยชื่อเต็�
 - ไฟล์ต้นฉบับจะไม่ถูกเขียนทับ ถ้าปลายทางมีไฟล์ชื่อเดียวกันอยู่ โปรแกรมจะหยุดจนกว่าจะเปิดตัวเลือก "เขียนทับไฟล์ที่มีอยู่"
 - แปลงเป็น XDF จะได้ไฟล์ `.meta.json` คู่กันมาด้วย เก็บไว้ข้างไฟล์ XDF จะแปลงกลับเป็น KP ได้เหมือนเดิม
 - ไฟล์ KP บางรุ่นเอนจินยังอ่านไม่ได้ โปรแกรมจะแจ้งข้อความจากเอนจินให้เห็นตรง ๆ
-- ตาราง XDF ที่เก็บข้อมูลแบบเว้นช่วง (stride) เรียงตามคอลัมน์ หรือใช้เซลล์ 1 บิต ยังแปลงให้ตรงไม่ได้ โปรแกรมจะเตือนเป็นรายตาราง
+- ตารางที่เก็บข้อมูลแบบเว้นช่วง (stride) หรือเรียงตามคอลัมน์ อ่านและเขียนได้ตรงตามกติกาของ TunerPro ทั้งใน XDF, JSON, YAML, CSV และหน้าสำรวจแมพ แต่รูปแบบ KP ยังเก็บไม่ได้ เมื่อแปลงเป็น KP โปรแกรมจะบอกจำนวนตารางที่ได้รับผล
+- ตาราง XDF ที่ใช้เซลล์ 1 บิตหรือเริ่มกลางไบต์ยังอ่านไม่ได้ โปรแกรมจะเตือนเป็นรายตาราง
 - สูตรใน XDF ที่ไม่ใช่สูตรเส้นตรง เช่น สูตรยกกำลัง เก็บลง KP ไม่ได้ จะอ่านค่าเป็น X ตรง ๆ พร้อมคำเตือน
 - รายการ XDFFLAG, XDFPATCH, XDFFUNCTION และ XDFCHECKSUM ไม่มีที่เก็บในรูปแบบอื่น จึงไม่ถูกแปลงไปด้วย
 - ไฟล์นามสกุล .xdf ที่ไม่ใช่ XML ของ TunerPro อ่านไม่ได้
@@ -105,15 +106,18 @@ go test ./...          # ส่วนเชื่อมหน้าต่าง�
 
 ## สิ่งที่แก้จากเอนจินต้นฉบับ
 
-ทั้งหมดอยู่ในโฟลเดอร์ `xdf/` และมีเทสต์กำกับ
+อยู่ในโฟลเดอร์ `xdf/`, `model/` และ `mapcsv/` และมีเทสต์กำกับ กติกาเรื่องตำแหน่งเซลล์อ่านมาจากตัวโปรแกรม TunerPro RT v6 โดยตรง
 
+- ตำแหน่งเซลล์แบบเว้นช่วง เรียงย้อน และเรียงตามคอลัมน์ ทำตามกติกาของ TunerPro เดิมอ่านเป็นเซลล์ติดกันทั้งหมด
+- ชนิดของแกนดูจาก embedinfo เดิมดูจากแอดเดรสที่ TunerPro ทิ้งค้างไว้ในแกน ทำให้อ่านแกนผิดที่
+- ตารางที่อยู่ได้ถึงสามหมวด เขียนเป็นตารางเดียวในช่องหมวด A, B, C เดิมแตกเป็นตารางซ้ำหมวดละตัว
 - แกนที่ลิงก์ไปยังตารางอื่น อ่านเป็นแกนจริงจากตารางนั้น เดิมอ่านเป็นลำดับ 0, 1, 2
 - แกนที่พิมพ์ค่ากำกับไว้เอง เก็บค่าตามที่พิมพ์ เดิมค่าหายเหลือแต่ลำดับ
 - สูตรของตาราง ใช้สูตรของทั้งตาราง เดิมหยิบสูตรเฉพาะเซลล์มาใช้แทนในบางไฟล์ และสูตรที่มีการขึ้นบรรทัดใหม่ถูกทิ้ง
 - ชื่อหัวตาราง เขียนเต็มทั้งชื่อ เดิมตัดเหลือคำแรก
 - จำนวนทศนิยม ใช้ตามไฟล์ต้นทาง เดิมถูกตัดลงตามค่าสูงสุดของชนิดข้อมูล
 - จุดท้ายของแกนค่าคงที่ที่เป็นศูนย์ แสดงเป็นศูนย์ เดิมแสดงเป็นเลขลำดับ
-- เตือนเมื่อเจอรูปแบบที่ยังเก็บไม่ได้ ได้แก่ stride การเรียงตามคอลัมน์ เซลล์ที่ไม่ใช่ 8, 16, 32 บิต และ BASEOFFSET
+- เตือนเมื่อเจอรูปแบบที่ยังเก็บไม่ได้ ได้แก่ เซลล์ที่ไม่ใช่ 8, 16, 32 บิต เซลล์ที่เริ่มกลางไบต์ และ BASEOFFSET
 
 ## เครดิตและสัญญาอนุญาต
 
@@ -128,4 +132,4 @@ go test ./...          # ส่วนเชื่อมหน้าต่าง�
 
 XDFKIT-TH is a Windows desktop app for converting ECU map definitions between WinOLS KP, TunerPro XDF, A2L, DAMOS, JSON and YAML. It shows map values read from a flash image, checks and fixes KP axes, merges definitions, and reads and writes Thai text (Windows-874) in KP and XDF files. The interface is in Thai and English, with dark and light themes.
 
-It is built by AlexDev-TH on the [xdfkit](https://github.com/nyetlabs/xdfkit) engine by nyetlabs, with fixes to its XDF reader and writer (linked axes, fixed axis labels, table equations, whole titles, decimal places), under the same licence, LGPL-3.0-or-later. Download `XDFKIT-TH.exe` from the Releases page, or build it with `app/build.ps1`.
+It is built by AlexDev-TH on the [xdfkit](https://github.com/nyetlabs/xdfkit) engine by nyetlabs, with fixes to its XDF reader and writer (cell strides and column order as TunerPro places them, linked axes, fixed axis labels, table equations, whole titles, decimal places, several categories on one table), under the same licence, LGPL-3.0-or-later. Download `XDFKIT-TH.exe` from the Releases page, or build it with `app/build.ps1`.

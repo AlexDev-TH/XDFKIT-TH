@@ -80,7 +80,7 @@
     <title>Ignition Map Gear 1</title>
     <description>&#225;&#161;&#185; RPM &#225;&#197;&#208; Load</description>
     <XDFAXIS id="x" uniqueid="0x0">
-      <EMBEDDEDDATA mmedelementsizebits="8" mmedmajorstridebits="-32" mmedminorstridebits="0" />
+      <EMBEDDEDDATA mmedaddress="0x99" mmedelementsizebits="8" mmedmajorstridebits="-32" mmedminorstridebits="0" />
       <indexcount>4</indexcount>
       <embedinfo type="3" linkobjid="0x1" />
       <datatype>0</datatype>
@@ -121,7 +121,7 @@
     <title>Fuel Trim</title>
     <description>Trim by speed and temperature</description>
     <XDFAXIS id="x" uniqueid="0x0">
-      <EMBEDDEDDATA mmedelementsizebits="8" mmedmajorstridebits="-32" mmedminorstridebits="0" />
+      <EMBEDDEDDATA mmedaddress="0x0" mmedelementsizebits="8" mmedmajorstridebits="-32" mmedminorstridebits="0" />
       <units>rpm</units>
       <indexcount>3</indexcount>
       <datatype>0</datatype>

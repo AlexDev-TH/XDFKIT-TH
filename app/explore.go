@@ -192,7 +192,7 @@ func viewObject(m *model.Model, index int, img []byte) MapView {
 		Index: index, ID: o.ID, Key: o.Key, Description: o.Description, Comment: o.Comment,
 		Categories: []string{}, Shape: o.Shape, Inverse: o.Inverse, Rows: o.Rows, Cols: o.Cols,
 		Address:    fmt.Sprintf("0x%X", uint32(o.Address)),
-		EndAddress: fmt.Sprintf("0x%X", uint64(o.Address)+uint64(o.Rows*o.Cols*(o.Data.Bits/8))),
+		EndAddress: fmt.Sprintf("0x%X", uint64(o.Address)+uint64(o.Data.Extent(o.Rows, o.Cols))),
 		Bits:       o.Data.Bits, Signed: o.Data.Signed, Float: o.Data.Float, Endian: endianOf(o.Data),
 		ValueDescription: o.Value.Description, Units: o.Value.Units, Precision: o.Value.Precision,
 		Factor: Num(o.Value.Conversion.Factor), Offset: Num(o.Value.Conversion.Offset),
@@ -265,10 +265,9 @@ func rawCell(p []byte, d model.Data) float64 {
 	return float64(u)
 }
 
-// fits reports whether n cells of d at addr lie inside the image.
-func fits(addr uint64, n int, d model.Data, img []byte) bool {
-	w := uint64(d.Bits / 8)
-	return n >= 0 && addr+uint64(n)*w <= uint64(len(img))
+// fits reports whether rows by cols cells of d at addr lie inside the image.
+func fits(addr uint64, rows, cols int, d model.Data, img []byte) bool {
+	return rows >= 0 && cols >= 0 && addr+uint64(d.Extent(rows, cols)) <= uint64(len(img))
 }
 
 func widthOK(d model.Data) bool {
@@ -287,13 +286,14 @@ func readCells(o *model.Object, img []byte) (cells, raw []float64, note string) 
 		return nil, nil, "too-large"
 	case img == nil:
 		return nil, nil, "needs-image"
-	case !fits(uint64(o.Address), n, o.Data, img):
+	case !fits(uint64(o.Address), o.Rows, o.Cols, o.Data, img):
 		return nil, nil, "out-of-range"
 	}
-	w := o.Data.Bits / 8
+	// Cells are where TunerPro places them: packed, or by their strides.
 	cells, raw = make([]float64, n), make([]float64, n)
 	for i := range n {
-		raw[i] = rawCell(img[int(o.Address)+i*w:], o.Data)
+		at := int(o.Address) + o.Data.CellOffset(i/o.Cols, i%o.Cols, o.Rows, o.Cols)
+		raw[i] = rawCell(img[at:], o.Data)
 		cells[i] = o.Value.Conversion.Apply(raw[i])
 	}
 	return cells, raw, ""
@@ -353,11 +353,12 @@ func axisPoints(x *model.Axis, n int, img []byte) (pts []float64, note string) {
 		return nil, "unsupported"
 	case img == nil:
 		return nil, "needs-image"
-	case !fits(uint64(*x.Address), n, *x.Data, img):
+	case !fits(uint64(*x.Address), 1, n, *x.Data, img):
 		return nil, "out-of-range"
 	}
+	// The points are one row of n cells, spaced as the axis's storage says.
 	d, w, start := *x.Data, x.Data.Bits/8, int(*x.Address)
-	at := func(i int) float64 { return rawCell(img[start+i*w:], d) }
+	at := func(i int) float64 { return rawCell(img[start+d.CellOffset(0, i, 1, n):], d) }
 	raw := make([]float64, n)
 	switch x.Stored {
 	case "add", "subtract", "backwards":
